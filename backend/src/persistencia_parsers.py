@@ -224,17 +224,23 @@ def persistir_extrato_bradesco(client: Client, arquivo_bytes: bytes) -> Dict:
         client.table("transacao_bancaria").insert(rows).execute()
     datas = sorted(r["data_extrato"] for r in rows)
 
-    # Extrai saldo do OFX (<LEDGERBAL>) e persiste snapshot pra Dashboard de Liquidez
+    # Extrai saldo do OFX (<LEDGERBAL>) e persiste snapshot pra Dashboard de Liquidez.
+    # Bradesco sempre envia DTASOF=00000000 (inválido) — usa periodo_fim (última
+    # transação) ou CURRENT_DATE como fallback.
     from backend.src.extrato_bradesco import extract_saldo
+    from datetime import date as _date
     saldo_info = extract_saldo(arquivo_bytes)
     saldo_final = 0.0
-    if saldo_info and saldo_info.get("data_referencia"):
+    if saldo_info:
         saldo_final = float(saldo_info["saldo"])
+        data_ref = saldo_info.get("data_referencia") or ""
+        if not data_ref or data_ref.startswith("0000"):
+            data_ref = datas[-1] if datas else _date.today().isoformat()
         try:
             client.table("saldo_conta_snapshot").insert({
                 "conta_bancaria_id": str(conta_id),
                 "saldo_valor": saldo_final,
-                "data_referencia": saldo_info["data_referencia"],
+                "data_referencia": data_ref,
                 "origem": "BRADESCO_OFX",
             }).execute()
         except Exception:

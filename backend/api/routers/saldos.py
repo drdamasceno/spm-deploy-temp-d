@@ -32,11 +32,12 @@ def dashboard(current=Depends(get_current_user)):
     total_contas = 0.0
     today = date.today()
     for c in contas:
+        # Ordem: quem foi escrito por último ganha. Extrato novo substitui manual;
+        # "Atualizar" manual substitui extrato antigo. data_referencia fica só pra display.
         snap = (
             client.table("saldo_conta_snapshot")
             .select("saldo_valor,data_referencia,origem")
             .eq("conta_bancaria_id", c["id"])
-            .order("data_referencia", desc=True)
             .order("criado_em", desc=True)
             .limit(1)
             .execute()
