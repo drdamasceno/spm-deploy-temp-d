@@ -111,6 +111,19 @@ def persistir_extrato_unicred(client: Client, arquivo_bytes: bytes, conta_id: UU
     } for t in transacoes]
     if rows:
         client.table("transacao_bancaria").insert(rows).execute()
+
+    # Persiste snapshot de saldo da conta (alimenta Dashboard de Liquidez)
+    if meta.saldo_final is not None and meta.periodo_fim:
+        try:
+            client.table("saldo_conta_snapshot").insert({
+                "conta_bancaria_id": str(conta_id),
+                "saldo_valor": float(meta.saldo_final),
+                "data_referencia": meta.periodo_fim,
+                "origem": "UNICRED_PDF",
+            }).execute()
+        except Exception:
+            pass  # não-crítico — se falhar, extrato continua válido
+
     return {
         "conta_id": conta_id,
         "origem_banco": "UNICRED",
@@ -210,12 +223,28 @@ def persistir_extrato_bradesco(client: Client, arquivo_bytes: bytes) -> Dict:
     if rows:
         client.table("transacao_bancaria").insert(rows).execute()
     datas = sorted(r["data_extrato"] for r in rows)
+
+    # Extrai saldo do OFX (<LEDGERBAL>) e persiste snapshot pra Dashboard de Liquidez
+    from backend.src.extrato_bradesco import extract_saldo
+    saldo_info = extract_saldo(arquivo_bytes)
+    saldo_final = 0.0
+    if saldo_info and saldo_info.get("data_referencia"):
+        saldo_final = float(saldo_info["saldo"])
+        try:
+            client.table("saldo_conta_snapshot").insert({
+                "conta_bancaria_id": str(conta_id),
+                "saldo_valor": saldo_final,
+                "data_referencia": saldo_info["data_referencia"],
+                "origem": "BRADESCO_OFX",
+            }).execute()
+        except Exception:
+            pass
+
     return {
         "conta_id": conta_id,
         "origem_banco": "BRADESCO",
         "total_transacoes_inseridas": len(rows),
         "periodo_inicio": datas[0] if datas else "",
         "periodo_fim": datas[-1] if datas else "",
-        # OFX Bradesco nao carrega saldo final de forma estavel; 0 e aceitavel aqui.
-        "saldo_final": 0.0,
+        "saldo_final": saldo_final,
     }
