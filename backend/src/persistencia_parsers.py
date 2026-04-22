@@ -97,6 +97,12 @@ def persistir_extrato_unicred(client: Client, arquivo_bytes: bytes, conta_id: UU
     parser = UnicredParser()
     meta = parser.extrair_metadados(arquivo_bytes)
     transacoes = parser.parse(arquivo_bytes)
+    # Unicred PDF não tem ID único — gera hash sintético como fitid
+    import hashlib
+    def _synth_fitid(t):
+        key = f"UC|{t.data_movimento}|{t.valor:.2f}|{(t.historico or '')[:200]}|{t.titular_pix or ''}|{t.linha_numero}"
+        return "uc_" + hashlib.sha1(key.encode()).hexdigest()[:16]
+
     rows = [{
         "conta_id": str(conta_id),
         "valor": t.valor,
@@ -108,9 +114,24 @@ def persistir_extrato_unicred(client: Client, arquivo_bytes: bytes, conta_id: UU
         "titular_pix": t.titular_pix,
         "origem_banco": "UNICRED",
         "natureza_lancamento": t.natureza.value,
+        "fitid": _synth_fitid(t),
     } for t in transacoes]
     if rows:
-        client.table("transacao_bancaria").insert(rows).execute()
+        # Dedup prévio: filtra por fitid já existente na mesma conta
+        fitids = [r["fitid"] for r in rows if r.get("fitid")]
+        if fitids:
+            existentes = (
+                client.table("transacao_bancaria")
+                .select("fitid")
+                .eq("conta_id", str(conta_id))
+                .in_("fitid", fitids)
+                .execute()
+                .data
+            ) or []
+            ja_existem = {e["fitid"] for e in existentes}
+            rows = [r for r in rows if not r.get("fitid") or r["fitid"] not in ja_existem]
+        if rows:
+            client.table("transacao_bancaria").insert(rows).execute()
 
     # Persiste snapshot de saldo da conta (alimenta Dashboard de Liquidez)
     if meta.saldo_final is not None and meta.periodo_fim:
@@ -219,9 +240,24 @@ def persistir_extrato_bradesco(client: Client, arquivo_bytes: bytes) -> Dict:
             "titular_pix": t.get("titular_pix") or None,
             "origem_banco": "BRADESCO",
             "natureza_lancamento": _natureza_bradesco(t.get("tipo") or "", t.get("trntype") or ""),
+            "fitid": (t.get("fitid") or "").strip() or None,
         })
     if rows:
-        client.table("transacao_bancaria").insert(rows).execute()
+        # Dedup prévio: filtra rows cujo fitid já está no banco pra essa conta
+        fitids = [r["fitid"] for r in rows if r.get("fitid")]
+        if fitids:
+            existentes = (
+                client.table("transacao_bancaria")
+                .select("fitid")
+                .eq("conta_id", conta_id)
+                .in_("fitid", fitids)
+                .execute()
+                .data
+            ) or []
+            ja_existem = {e["fitid"] for e in existentes}
+            rows = [r for r in rows if not r.get("fitid") or r["fitid"] not in ja_existem]
+        if rows:
+            client.table("transacao_bancaria").insert(rows).execute()
     datas = sorted(r["data_extrato"] for r in rows)
 
     # Extrai saldo do OFX (<LEDGERBAL>) e persiste snapshot pra Dashboard de Liquidez.
