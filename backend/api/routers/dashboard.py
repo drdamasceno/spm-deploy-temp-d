@@ -92,16 +92,23 @@ def dashboard(
             previsto_total += v
 
     # --- 4. Saídas do mês: transacao_bancaria DEBITO no intervalo ---
+    # TRANSFERENCIA_INTERNA (SPM Bradesco↔Unicred + INVEST FACIL) é excluída:
+    # saldo consolidado da empresa não muda, não é despesa real.
+    # PAGAMENTO_INTRAGRUPO (SPM→FD) CONTA como saída: despesa operacional
+    # com NFE; SPM contrata empresa do grupo pra fornecer serviço.
     txs = (
         client.table("transacao_bancaria")
-        .select("valor,data_extrato,registro_pp_id")
+        .select("valor,data_extrato,registro_pp_id,categoria")
         .eq("tipo", "DEBITO")
         .gte("data_extrato", d_ini)
         .lte("data_extrato", d_fim)
         .execute()
         .data
     )
-    saidas_total = sum(abs(float(t["valor"])) for t in txs)
+    saidas_total = sum(
+        abs(float(t["valor"])) for t in txs
+        if t.get("categoria") != "TRANSFERENCIA_INTERNA"
+    )
 
     # --- 5. Realizado por categoria via conciliacao_orcamento ↔ orcamento_linha (natureza) ---
     realizado_por_natureza: dict[str, float] = {}

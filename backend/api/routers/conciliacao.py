@@ -27,6 +27,7 @@ from backend.src.classificador_conciliacao import (
     LinhaOrcamento,
     Regra,
     Transacao,
+    eh_pagamento_intragrupo,
     eh_transferencia_interna,
     normalizar_titular,
     sugerir_cascata,
@@ -87,12 +88,15 @@ def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
         q = q.eq("conta_id", str(conta_id))
     txs_raw = q.execute().data
 
-    # Heuristica preventiva: detecta TRANSFERENCIA_INTERNA (titular == razao
-    # social do proprio grupo SPM/FD). Marca no DB com status
-    # CONCILIADO_POR_CATEGORIA + categoria TRANSFERENCIA_INTERNA (ambos ja
-    # existem no enum — zero migration). Essas transacoes saem do pool de
-    # sugestoes para nao sugerir match contra PP/orcamento indevidamente.
+    # Heurística preventiva — 2 categorias distintas:
+    #  1. TRANSFERENCIA_INTERNA — entre contas da própria SPM (Bradesco↔Unicred).
+    #     Saldo consolidado não muda; filtrada do Dashboard.
+    #  2. PAGAMENTO_INTRAGRUPO — SPM contrata empresa do grupo (ex: FD GESTAO)
+    #     pra fornecer serviço. Despesa real com NFE; conta como saída no
+    #     Dashboard. Fica fora do pool pra evitar match falso com prestador PP.
+    # Ambas saem do pool de sugestões.
     ids_internas: list[str] = []
+    ids_intragrupo: list[str] = []
     for t_raw in txs_raw:
         t_obj = Transacao(
             id=t_raw["id"],
@@ -103,6 +107,8 @@ def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
         )
         if eh_transferencia_interna(t_obj):
             ids_internas.append(t_raw["id"])
+        elif eh_pagamento_intragrupo(t_obj):
+            ids_intragrupo.append(t_raw["id"])
     if ids_internas:
         (
             client.table("transacao_bancaria")
@@ -113,7 +119,18 @@ def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
             .in_("id", ids_internas)
             .execute()
         )
-        txs_raw = [t for t in txs_raw if t["id"] not in set(ids_internas)]
+    if ids_intragrupo:
+        (
+            client.table("transacao_bancaria")
+            .update({
+                "status_conciliacao": "CONCILIADO_POR_CATEGORIA",
+                "categoria": "PAGAMENTO_INTRAGRUPO",
+            })
+            .in_("id", ids_intragrupo)
+            .execute()
+        )
+    removidos = set(ids_internas) | set(ids_intragrupo)
+    txs_raw = [t for t in txs_raw if t["id"] not in removidos]
 
     txs = [
         Transacao(

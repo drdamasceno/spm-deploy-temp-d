@@ -6,6 +6,7 @@ from backend.src.classificador_conciliacao import (
     Transacao,
     LinhaOrcamento,
     Regra,
+    eh_pagamento_intragrupo,
     eh_transferencia_interna,
     sugerir_por_regra,
     sugerir_por_similaridade,
@@ -154,6 +155,41 @@ def test_eh_transferencia_interna_falso_para_terceiro():
     assert eh_transferencia_interna(tx) is False
 
 
+def test_eh_transferencia_interna_falso_para_fd():
+    """FD agora é PAGAMENTO_INTRAGRUPO, não TRANSFERENCIA_INTERNA."""
+    tx = Transacao(
+        id="x",
+        titular_pix="FD GESTAO INTELIGENTE DE NEGOCIOS LTDA",
+        valor=-55473.33,
+        data_movimento="2026-04-13",
+        origem_banco="UNICRED",
+    )
+    assert eh_transferencia_interna(tx) is False
+    assert eh_pagamento_intragrupo(tx) is True
+
+
+def test_eh_pagamento_intragrupo_detecta_fd():
+    tx = Transacao(
+        id="x",
+        titular_pix="FD GESTAO INTELIGENTE",
+        valor=-55473.33,
+        data_movimento="2026-04-13",
+        origem_banco="UNICRED",
+    )
+    assert eh_pagamento_intragrupo(tx) is True
+
+
+def test_eh_pagamento_intragrupo_falso_para_spm():
+    tx = Transacao(
+        id="x",
+        titular_pix="SOCIEDADE PARANAENSE DE MEDICINA LTDA",
+        valor=-1000,
+        data_movimento="2026-04-17",
+        origem_banco="BRADESCO",
+    )
+    assert eh_pagamento_intragrupo(tx) is False
+
+
 def test_cascata_transferencia_interna_retorna_vazio():
     tx = Transacao(
         id="x",
@@ -167,5 +203,23 @@ def test_cascata_transferencia_interna_retorna_vazio():
         titular_razao_social="HUGO FERNANDES DAMASCENO",
         valor_previsto=60000,
         saldo_pendente=60000,
+    )
+    assert sugerir_cascata(tx, [linha], []) == []
+
+
+def test_cascata_pagamento_intragrupo_retorna_vazio():
+    """FD também sai do pool (evita match falso com prestador PP)."""
+    tx = Transacao(
+        id="x",
+        titular_pix="FD GESTAO INTELIGENTE",
+        valor=-55473.33,
+        data_movimento="2026-04-13",
+        origem_banco="UNICRED",
+    )
+    linha = LinhaOrcamento(
+        id="l1",
+        titular_razao_social="ALGUM PRESTADOR CLT",
+        valor_previsto=55473.33,
+        saldo_pendente=55473.33,
     )
     assert sugerir_cascata(tx, [linha], []) == []

@@ -35,23 +35,30 @@ def normalizar_titular(s: Optional[str]) -> str:
     return s
 
 
-# Lista de nomes que indicam "a própria empresa" — transferências entre contas
-# do grupo não devem ser conciliadas contra orçamento/PP (saldo líquido = zero).
-# TODO: no futuro, carregar do DB via empresa.razao_social.
+# Lista de razões sociais SPM — transferências entre contas da própria SPM
+# (Bradesco ↔ Unicred) são TRANSFERENCIA_INTERNA pura: saldo consolidado
+# da empresa não muda. Filtradas do Dashboard como não-despesa.
 _RAZOES_PROPRIAS_SPM = [
     "SOCIEDADE PARANAENSE DE MEDICINA",
-    "FD GESTAO INTELIGENTE",  # FD também é próprio
+]
+
+# Lista de empresas do grupo DIFERENTES da SPM — pagamentos SPM → essas
+# empresas são despesa operacional real (NFE emitida), NÃO são transferência
+# interna. Ficam fora do pool de sugestões (evita match falso contra
+# prestador individual do PP — risco de duplicidade) mas contam como saída
+# no Dashboard. Marcadas como PAGAMENTO_INTRAGRUPO.
+_EMPRESAS_GRUPO_EXTERNAS = [
+    "FD GESTAO INTELIGENTE",
 ]
 
 
 def eh_transferencia_interna(transacao: "Transacao") -> bool:
     """
-    True se o titular_pix bate com razão social de empresa do grupo
-    (transferência entre contas próprias, não deve conciliar).
+    True se titular_pix bate com razão social da própria SPM (transferência
+    entre contas SPM Bradesco ↔ SPM Unicred).
 
-    Usa match por substring na versão normalizada (upper + sem acento) para
-    tolerar sufixos ("LTDA", "S.A.") e prefixos de CNPJ que aparecem em alguns
-    extratos.
+    Match por substring em string normalizada (upper + sem acento) para
+    tolerar sufixos ("LTDA", "S.A.") e prefixos de CNPJ.
     """
     if not transacao.titular_pix:
         return False
@@ -59,6 +66,23 @@ def eh_transferencia_interna(transacao: "Transacao") -> bool:
     if not titular_norm:
         return False
     return any(razao in titular_norm for razao in _RAZOES_PROPRIAS_SPM)
+
+
+def eh_pagamento_intragrupo(transacao: "Transacao") -> bool:
+    """
+    True se titular_pix bate com razão social de empresa do grupo DIFERENTE
+    da SPM (ex: FD GESTAO).
+
+    Semântica: SPM contrata essa empresa pra fornecer serviço; pagamento é
+    despesa operacional real com NFE. Fica fora do pool de sugestões para
+    evitar match falso contra prestador individual no PP.
+    """
+    if not transacao.titular_pix:
+        return False
+    titular_norm = normalizar_titular(transacao.titular_pix)
+    if not titular_norm:
+        return False
+    return any(razao in titular_norm for razao in _EMPRESAS_GRUPO_EXTERNAS)
 
 
 @dataclass
@@ -219,7 +243,7 @@ def sugerir_cascata(
     do grupo SPM/FD) retornam [] imediatamente — saldo líquido é zero e não
     devem bater contra PP/orçamento.
     """
-    if eh_transferencia_interna(transacao):
+    if eh_transferencia_interna(transacao) or eh_pagamento_intragrupo(transacao):
         return []
 
     regras_list = list(regras)
