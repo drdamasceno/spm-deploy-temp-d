@@ -168,6 +168,22 @@ def persistir_extrato_bradesco(client: Client, arquivo_bytes: bytes) -> Dict:
             )
             rows_conta = resp.data or []
     if not rows_conta:
+        # fallback: Bradesco OFX omite o DV (dígito verificador) da conta.
+        # Tenta match com a conta cadastrada SEM o último dígito.
+        bankid_norm = bankid.lstrip("0") or bankid
+        resp = (
+            client.table("conta_bancaria")
+            .select("id,finalidade,banco,conta")
+            .in_("banco", [bankid, bankid_norm])
+            .execute()
+        )
+        for row in resp.data or []:
+            c = row.get("conta") or ""
+            # Match se a conta cadastrada sem o último dígito bate com o ACCTID
+            if c and c[:-1] == acctid:
+                rows_conta = [row]
+                break
+    if not rows_conta:
         raise ValueError(f"Conta nao cadastrada: banco {bankid} conta {acctid}")
     conta_id = rows_conta[0]["id"]
 

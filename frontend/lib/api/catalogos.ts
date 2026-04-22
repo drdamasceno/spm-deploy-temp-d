@@ -38,6 +38,7 @@ export interface ContaBancariaOut {
   agencia: string
   conta: string
   finalidade: string
+  finalidades: string[]
   ativo: boolean
 }
 
@@ -59,13 +60,28 @@ export interface ContaBancariaCreate {
   banco: string
   agencia: string
   conta: string
-  finalidade: FinalidadeConta
+  finalidades: FinalidadeConta[]
+}
+
+export interface ContaBancariaPatch {
+  banco?: string
+  agencia?: string
+  conta?: string
+  finalidades?: FinalidadeConta[]
 }
 
 export async function criarContaBancaria(
   payload: ContaBancariaCreate
 ): Promise<ContaBancariaOut> {
   const { data } = await apiClient.post<ContaBancariaOut>("/contas_bancarias", payload)
+  return data
+}
+
+export async function editarContaBancaria(
+  id: string,
+  patch: ContaBancariaPatch
+): Promise<ContaBancariaOut> {
+  const { data } = await apiClient.patch<ContaBancariaOut>(`/contas_bancarias/${id}`, patch)
   return data
 }
 
