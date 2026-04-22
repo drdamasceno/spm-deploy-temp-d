@@ -1,0 +1,27 @@
+# API / Bloco A+B (Passo 3 — auth + upload de rodada)
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+supabase==2.9.1
+pydantic==2.9.2
+pydantic-settings==2.5.2
+email-validator==2.2.0
+python-dotenv==1.0.1
+python-multipart==0.0.12   # upload multipart/form-data
+openpyxl==3.1.5            # leitura XLSX (compartilhado com motor)
+
+# API / Bloco D (excecao_pj + rodada_snapshot)
+pyotp==2.9.0               # TOTP para gate FEATURE_2FA
+
+# Motor de conciliacao (Fase 0 — 19fa14b)
+pdfplumber
+pyyaml
+PyJWT[crypto]
+cryptography
+httpx
+
+# Testes (Bloco D)
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pg8000==1.31.2             # cliente Postgres 100% Python (sem compilacao nativa); T7 DB-level
+pdfplumber==0.11.4
+rapidfuzz==3.10.1
