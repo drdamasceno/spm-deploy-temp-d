@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react"
 import type { AplicacaoOut, AplicacaoCreate, ModoAplicacao, TipoAplicacao, LiquidezAplicacao } from "@/types/v2"
 import { criarAplicacao, editarAplicacao } from "@/lib/api/saldos"
+import { InputDinheiro } from "@/components/ui/input-dinheiro"
 import { toast } from "sonner"
 
 interface Props {
@@ -29,7 +30,7 @@ const LIQUIDEZ_OPTS: { value: LiquidezAplicacao; label: string }[] = [
 export function EditorAplicacaoDialog({ open, aplicacao, onClose, onSaved }: Props) {
   const [nome, setNome] = useState("")
   const [tipo, setTipo] = useState<TipoAplicacao>("CDB")
-  const [valor, setValor] = useState("")
+  const [valor, setValor] = useState<number>(0)
   const [modo, setModo] = useState<ModoAplicacao>("MANUAL")
   const [instituicao, setInstituicao] = useState("")
   const [rentabilidade, setRentabilidade] = useState("")
@@ -42,7 +43,7 @@ export function EditorAplicacaoDialog({ open, aplicacao, onClose, onSaved }: Pro
     if (aplicacao) {
       setNome(aplicacao.nome)
       setTipo(aplicacao.tipo)
-      setValor(aplicacao.valor_atual.toString())
+      setValor(aplicacao.valor_atual)
       setModo(aplicacao.modo)
       setInstituicao(aplicacao.instituicao ?? "")
       setRentabilidade(aplicacao.rentabilidade ?? "")
@@ -52,7 +53,7 @@ export function EditorAplicacaoDialog({ open, aplicacao, onClose, onSaved }: Pro
     } else {
       setNome("")
       setTipo("CDB")
-      setValor("")
+      setValor(0)
       setModo("MANUAL")
       setInstituicao("")
       setRentabilidade("")
@@ -66,15 +67,14 @@ export function EditorAplicacaoDialog({ open, aplicacao, onClose, onSaved }: Pro
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    const v = parseFloat(valor.replace(",", "."))
-    if (!Number.isFinite(v) || v < 0) { toast.error("Valor aplicado inválido"); return }
+    if (!Number.isFinite(valor) || valor < 0) { toast.error("Valor aplicado inválido"); return }
     if (!nome.trim()) { toast.error("Nome é obrigatório"); return }
     setSaving(true)
     try {
       const payload: AplicacaoCreate = {
         nome: nome.trim(),
         tipo,
-        valor_atual: v,
+        valor_atual: valor,
         modo,
         instituicao: instituicao || null,
         rentabilidade: rentabilidade || null,
@@ -124,9 +124,8 @@ export function EditorAplicacaoDialog({ open, aplicacao, onClose, onSaved }: Pro
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-600 block mb-1">Valor aplicado (R$) *</label>
-            <input type="number" step="0.01" value={valor} onChange={e => setValor(e.target.value)}
-              className="w-full border border-slate-300 rounded px-2.5 py-1.5 text-sm" />
+            <label className="text-xs text-slate-600 block mb-1">Valor aplicado *</label>
+            <InputDinheiro value={valor} onChange={setValor} />
           </div>
         </div>
 

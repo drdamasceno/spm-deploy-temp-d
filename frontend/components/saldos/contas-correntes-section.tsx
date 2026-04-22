@@ -3,6 +3,7 @@ import { useState } from "react"
 import type { ContaLiquidezItem } from "@/types/v2"
 import { formatBRL } from "@/lib/format"
 import { registrarSaldoManual } from "@/lib/api/saldos"
+import { InputDinheiro } from "@/components/ui/input-dinheiro"
 import { toast } from "sonner"
 
 interface Props {
@@ -12,27 +13,26 @@ interface Props {
 
 export function ContasCorrentesSection({ contas, onUpdated }: Props) {
   const [editando, setEditando] = useState<string | null>(null)
-  const [valor, setValor] = useState("")
+  const [valor, setValor] = useState<number>(0)
   const [data, setData] = useState("")
   const [saving, setSaving] = useState(false)
 
   async function handleSalvar(conta: ContaLiquidezItem) {
     setSaving(true)
     try {
-      const v = parseFloat(valor.replace(",", "."))
-      if (!Number.isFinite(v)) {
+      if (!Number.isFinite(valor)) {
         toast.error("Valor inválido")
         setSaving(false)
         return
       }
       await registrarSaldoManual({
         conta_bancaria_id: conta.conta_id,
-        saldo_valor: v,
+        saldo_valor: valor,
         data_referencia: data || new Date().toISOString().slice(0, 10),
       })
       toast.success("Saldo atualizado")
       setEditando(null)
-      setValor("")
+      setValor(0)
       setData("")
       onUpdated()
     } catch (e) {
@@ -81,7 +81,7 @@ export function ContasCorrentesSection({ contas, onUpdated }: Props) {
             <button
               onClick={() => {
                 setEditando(c.conta_id)
-                setValor(c.saldo_valor.toString())
+                setValor(c.saldo_valor)
                 setData(new Date().toISOString().slice(0, 10))
               }}
               className="text-[11px] text-sky-600 hover:text-sky-800 bg-transparent border-0 cursor-pointer font-medium"
@@ -97,14 +97,8 @@ export function ContasCorrentesSection({ contas, onUpdated }: Props) {
           <div className="text-xs font-semibold text-sky-900 uppercase tracking-wide">Atualizar saldo manualmente</div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-slate-600 block">Novo saldo (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={valor}
-                onChange={e => setValor(e.target.value)}
-                className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
-              />
+              <label className="text-[10px] text-slate-600 block">Novo saldo</label>
+              <InputDinheiro value={valor} onChange={setValor} />
             </div>
             <div>
               <label className="text-[10px] text-slate-600 block">Data de referência</label>
