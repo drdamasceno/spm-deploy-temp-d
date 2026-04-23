@@ -1,6 +1,7 @@
 "use client";
 import { FilterEmpresa } from "./filter-empresa";
 import { FilterCompetencia } from "./filter-competencia";
+import { logout } from "@/lib/auth";
 
 export function Topbar() {
   return (
@@ -9,8 +10,16 @@ export function Topbar() {
       <div className="flex gap-2 items-center">
         <FilterEmpresa />
         <FilterCompetencia />
-        {/* Perfil do usuário — por agora apenas "Hugo" */}
-        <span className="text-xs text-slate-300">Hugo</span>
+        <span className="text-xs text-slate-300 ml-2">Hugo</span>
+        <button
+          type="button"
+          onClick={logout}
+          className="ml-1 px-2 py-1 text-xs text-slate-400 hover:text-white hover:bg-slate-800 rounded transition"
+          aria-label="Sair"
+          title="Sair"
+        >
+          Sair
+        </button>
       </div>
     </header>
   );
