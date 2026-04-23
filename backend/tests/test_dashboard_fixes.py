@@ -4,7 +4,11 @@ from backend.api.routers.saldos import get_liquidez_total
 
 
 def test_get_liquidez_total_soma_cc_e_aplicacoes():
-    """2 contas (snapshots 100 e 50) + 1 aplicação ativa (1000) = 1150."""
+    """2 contas ativas (snapshots 100 e 50) + 1 aplicação ativa (1000) = 1150.
+
+    Regra (alinhada com /saldos/dashboard): filtra contas ativo=True e
+    ordena snapshots por criado_em DESC (quem escreve por último ganha).
+    """
     client = MagicMock()
 
     saldos_por_conta = {"c1": "100", "c2": "50"}
@@ -12,13 +16,15 @@ def test_get_liquidez_total_soma_cc_e_aplicacoes():
     def table_side(nome):
         m = MagicMock()
         if nome == "conta_bancaria":
-            m.select.return_value.execute.return_value.data = [{"id": "c1"}, {"id": "c2"}]
+            # contas ativas
+            m.select.return_value.eq.return_value.execute.return_value.data = [
+                {"id": "c1"}, {"id": "c2"}
+            ]
         elif nome == "saldo_conta_snapshot":
-            # O chamador faz: .select(...).eq("conta_bancaria_id", cid).order(...).order(...).limit(1).execute()
-            # Capturamos cid no .eq() e devolvemos o snapshot correspondente.
-            def eq_side(coluna, cid):
+            # chamada: .select(...).eq("conta_bancaria_id", cid).order("criado_em", desc=True).limit(1).execute()
+            def eq_side(_coluna, cid):
                 sub = MagicMock()
-                sub.order.return_value.order.return_value.limit.return_value.execute.return_value.data = [
+                sub.order.return_value.limit.return_value.execute.return_value.data = [
                     {"saldo_valor": saldos_por_conta[cid]}
                 ]
                 return sub

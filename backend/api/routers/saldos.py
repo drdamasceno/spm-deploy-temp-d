@@ -20,19 +20,25 @@ router = APIRouter(tags=["saldos"])
 
 
 def get_liquidez_total(client) -> float:
-    """Retorna liquidez total atual (últimos snapshots de CC + aplicações ativas).
+    """Retorna liquidez total atual (últimos snapshots de CC ativas + aplicações ativas).
 
     Função pública idempotente, sem mutação. Usada pelo Dashboard (Track B)
     para calcular `saldo_atual` coerente com `/saldos/dashboard.liquidez_total`.
+
+    Invariante: a lógica de ordenação e filtros DEVE ser idêntica à do endpoint
+    /saldos/dashboard. Divergência aqui gera inconsistência visível ao usuário.
+    Regras:
+      - Só contas com ativo=true
+      - Snapshot mais recente por criado_em DESC (quem escreve por último ganha —
+        extrato novo substitui manual, "Atualizar" manual substitui extrato antigo)
     """
-    contas = client.table("conta_bancaria").select("id").execute().data or []
+    contas = client.table("conta_bancaria").select("id").eq("ativo", True).execute().data or []
     saldo_cc = 0.0
     for c in contas:
         snap = (
             client.table("saldo_conta_snapshot")
             .select("saldo_valor")
             .eq("conta_bancaria_id", c["id"])
-            .order("data_referencia", desc=True)
             .order("criado_em", desc=True)
             .limit(1)
             .execute()
