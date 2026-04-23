@@ -8,6 +8,7 @@ import type {
 import { patchLinha, deletarOrcamentoLinha } from "@/lib/api/orcamento"
 import { BolsoSelect } from "@/components/ui/bolso-select"
 import { EmpresaPagadoraSelect } from "@/components/ui/empresa-pagadora-select"
+import { ContratoSelect } from "@/components/ui/contrato-select"
 import { toast } from "sonner"
 
 interface Props {
@@ -27,6 +28,7 @@ export function LinhaEditorModal({
   const [data, setData] = useState("")
   const [bolso, setBolso] = useState<BolsoTipo>("SPM_OPERACIONAL")
   const [empresaPagadoraId, setEmpresaPagadoraId] = useState<string | null>(null)
+  const [contratoId, setContratoId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export function LinhaEditorModal({
     setData(linha.data_previsao ?? "")
     setBolso(linha.bolso ?? "SPM_OPERACIONAL")
     setEmpresaPagadoraId(linha.empresa_pagadora_id ?? null)
+    setContratoId((linha as unknown as { contrato_id?: string | null }).contrato_id ?? null)
   }, [linha])
 
   useEffect(() => {
@@ -67,6 +70,7 @@ export function LinhaEditorModal({
         data_previsao: data || null,
         bolso,
         empresa_pagadora_id: empresaPagadoraId,
+        contrato_id: contratoId,
       })
       toast.success("Linha atualizada")
       onClose(nova)
@@ -167,6 +171,20 @@ export function LinhaEditorModal({
             onChange={setEmpresaPagadoraId}
             disabled={submitting}
           />
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-600 block mb-1">
+            Contrato vinculado
+          </label>
+          <ContratoSelect
+            value={contratoId}
+            onChange={setContratoId}
+            disabled={submitting}
+          />
+          <div className="text-[10px] text-slate-500 mt-1">
+            Opcional. Despesas atreladas a contratos somem se o contrato é encerrado.
+          </div>
         </div>
 
         <div className="flex gap-2 justify-between pt-2">

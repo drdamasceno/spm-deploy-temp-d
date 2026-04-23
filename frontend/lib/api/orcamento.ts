@@ -87,6 +87,7 @@ export type OrcamentoLinhaPatch = Partial<{
   titular_cpf_cnpj: string | null
   categoria_id: string | null
   projeto_id: string | null
+  contrato_id: string | null
   valor_previsto: number
   data_previsao: string | null
   observacao: string | null

@@ -16,6 +16,8 @@ interface Props {
   empresaCodigoPorId?: Record<string, string>;
   /** Empresa do orçamento atual. Se empresa_pagadora = essa, badge é redundante e some. */
   empresaOrcamentoId?: string;
+  /** Mapa contrato_id → rótulo curto (ex: "PR-BANDEIRANTES"). Usado na coluna Contrato. */
+  contratoRotuloPorId?: Record<string, string>;
 }
 
 function TabelaLinhasImpl({
@@ -25,6 +27,7 @@ function TabelaLinhasImpl({
   onRowClick,
   empresaCodigoPorId,
   empresaOrcamentoId,
+  contratoRotuloPorId,
 }: Props) {
   if (!linhas.length) {
     return (
@@ -50,6 +53,9 @@ function TabelaLinhasImpl({
             </th>
             <th className="px-3 py-2 text-left font-semibold text-slate-600 uppercase">
               Projeto
+            </th>
+            <th className="px-3 py-2 text-left font-semibold text-slate-600 uppercase">
+              Contrato
             </th>
             <th className="px-3 py-2 text-right font-semibold text-slate-600 uppercase">
               Previsto
@@ -120,6 +126,18 @@ function TabelaLinhasImpl({
                 </td>
                 <td className="px-3 py-2 text-slate-700">
                   {proj ? proj.codigo : "—"}
+                </td>
+                <td className="px-3 py-2 text-slate-700">
+                  {l.contrato_id && contratoRotuloPorId?.[l.contrato_id] ? (
+                    <span
+                      className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-sky-100 text-sky-800 font-medium"
+                      title="Contrato vinculado — despesa atrelada a este contrato"
+                    >
+                      {contratoRotuloPorId[l.contrato_id]}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-[10px]">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">
                   {formatBRL(l.valor_previsto)}

@@ -45,6 +45,7 @@ class OrcamentoLinhaPatch(BaseModel):
     titular_cpf_cnpj: Optional[str] = None
     categoria_id: Optional[str] = None
     projeto_id: Optional[str] = None
+    contrato_id: Optional[UUID] = None
     valor_previsto: Optional[float] = None
     data_previsao: Optional[str] = None
     observacao: Optional[str] = None

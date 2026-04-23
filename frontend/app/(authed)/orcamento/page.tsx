@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo, useCallback, startTransition } from "react";
 import { useFilters } from "@/lib/filters-context";
 import { listarEmpresas, listarCategorias, listarProjetos } from "@/lib/api/catalogos";
+import { apiClient } from "@/lib/api";
 import {
   listarOrcamentos,
   listarLinhasDoOrcamento,
@@ -33,6 +34,7 @@ export default function OrcamentoPage() {
   const [linhas, setLinhas] = useState<OrcamentoLinhaOut[]>([]);
   const [categorias, setCategorias] = useState<CategoriaOut[]>([]);
   const [projetos, setProjetos] = useState<ProjetoOut[]>([]);
+  const [contratoRotuloPorId, setContratoRotuloPorId] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<NaturezaOrcamento>("DESPESA_FIXA");
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -42,16 +44,26 @@ export default function OrcamentoPage() {
   const recarregar = useCallback(async () => {
     setLoading(true);
     try {
-      const [emps, orcs, cats, projs] = await Promise.all([
+      const [emps, orcs, cats, projs, contratosResp] = await Promise.all([
         listarEmpresas(),
         listarOrcamentos({ competencia }),
         listarCategorias(),
         listarProjetos(),
+        apiClient
+          .get<Array<{ id: string; uf: string; cidade: string }>>("/contratos")
+          .then((r) => r.data)
+          .catch(() => []),
       ]);
       setEmpresas(emps);
       setOrcamentos(orcs);
       setCategorias(cats);
       setProjetos(projs);
+      // Dedup contratos por id (vêm múltiplas competências) e monta rótulo UF-cidade
+      const rotulos: Record<string, string> = {};
+      for (const c of contratosResp) {
+        if (!rotulos[c.id]) rotulos[c.id] = `${c.uf}-${c.cidade}`;
+      }
+      setContratoRotuloPorId(rotulos);
       const atual = orcs[0] ?? null;
       setOrcamentoAtual(atual);
       if (atual) {
@@ -254,6 +266,7 @@ export default function OrcamentoPage() {
             onRowClick={(l) => setLinhaEditando(l)}
             empresaCodigoPorId={Object.fromEntries(empresas.map((e) => [e.id, e.codigo]))}
             empresaOrcamentoId={orcamentoAtual?.empresa_id}
+            contratoRotuloPorId={contratoRotuloPorId}
           />
         </>
       ) : (
