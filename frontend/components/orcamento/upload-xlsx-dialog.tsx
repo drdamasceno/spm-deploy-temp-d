@@ -46,20 +46,35 @@ export function UploadXlsxDialog({
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { status?: number; data?: { detail?: { exists?: boolean; status?: string } } } };
+      const axiosErr = err as {
+        response?: {
+          status?: number;
+          data?: { detail?: unknown };
+        };
+      };
       const status = axiosErr?.response?.status;
       const detail = axiosErr?.response?.data?.detail;
-      if (status === 409 && detail?.exists && !force) {
-        if (detail.status === "FECHADO") {
+      const detailObj =
+        detail && typeof detail === "object"
+          ? (detail as Record<string, unknown>)
+          : null;
+      const detailStatus =
+        detailObj && typeof detailObj.status === "string"
+          ? (detailObj.status as string)
+          : null;
+      // Regra: qualquer 409 no /orcamentos/upload significa "já existe
+      // orçamento pra essa (empresa, competência)". Perguntamos se substitui.
+      if (status === 409 && !force) {
+        if (detailStatus === "FECHADO") {
           toast.error(
             "Já existe um orçamento FECHADO para essa competência. Não pode ser substituído."
           );
         } else if (
           confirm(
-            `Já existe orçamento para ${competencia}. Substituir? (linhas atuais serão DELETADAS)`
+            `Já existe orçamento para ${competencia}. Substituir? (as linhas atuais serão DELETADAS)`
           )
         ) {
-          // re-chama com force=true
+          setSubmitting(false);
           return handleSubmit(e, true);
         }
       } else {
