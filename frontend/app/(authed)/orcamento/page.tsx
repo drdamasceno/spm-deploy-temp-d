@@ -8,6 +8,7 @@ import {
   listarLinhasDoOrcamento,
   validarOrcamento,
   replicarOrcamento,
+  deletarOrcamento,
 } from "@/lib/api/orcamento";
 import { TabsSecoes } from "@/components/orcamento/tabs-secoes";
 import { TabelaLinhas } from "@/components/orcamento/tabela-linhas";
@@ -196,6 +197,32 @@ export default function OrcamentoPage() {
               className="px-3 py-1 text-xs rounded bg-blue-600 text-white"
             >
               Replicar para próximo mês
+            </button>
+          )}
+          {orcamentoAtual && orcamentoAtual.status !== "FECHADO" && (
+            <button
+              onClick={async () => {
+                if (
+                  !confirm(
+                    `Deletar orçamento de ${competencia} (${orcamentoAtual.status}) e TODAS as suas linhas? Esta ação não pode ser desfeita.`
+                  )
+                ) {
+                  return;
+                }
+                try {
+                  await deletarOrcamento(orcamentoAtual.id);
+                  toast.success(`Orçamento ${competencia} deletado`);
+                  recarregar();
+                } catch (err) {
+                  toast.error(
+                    "Falha: " + (err instanceof Error ? err.message : "erro")
+                  );
+                }
+              }}
+              className="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700"
+              title="Deletar orçamento atual (permite novo upload)"
+            >
+              Deletar orçamento
             </button>
           )}
         </div>

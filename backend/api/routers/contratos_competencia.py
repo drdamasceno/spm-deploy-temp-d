@@ -20,6 +20,26 @@ from backend.api.schemas.contrato_competencia import (
 router = APIRouter(tags=["contratos_competencia"])
 
 
+@router.get("/contratos/cadastrados")
+def listar_contratos_cadastrados(current=Depends(get_current_user)):
+    """Lista todos os contratos da tabela `contrato` (sem filtro por competência).
+
+    Usado para popular o select de 'Contrato vinculado' no editor de linha
+    de orçamento. Retorna {id, uf, cidade, nome, status} ordenado por UF+cidade.
+    """
+    client = get_supabase_authed(current["jwt"])
+    rows = (
+        client.table("contrato")
+        .select("id,uf,cidade,nome,nome_oficial,status")
+        .order("uf")
+        .order("cidade")
+        .execute()
+        .data
+        or []
+    )
+    return rows
+
+
 @router.get("/contratos", response_model=list[ContratoCidadeListItem])
 def listar_contratos(
     competencia: Optional[str] = None,

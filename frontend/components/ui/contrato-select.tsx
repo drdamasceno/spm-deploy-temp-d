@@ -20,22 +20,12 @@ export function ContratoSelect({ value, onChange, disabled }: Props) {
   const [contratos, setContratos] = useState<ContratoItem[]>([])
 
   useEffect(() => {
-    // Lista contratos atuais (com competência ativa). O endpoint /contratos
-    // retorna ContratoCidadeListItem que tem id/uf/cidade/competencia/saldo.
+    // Lista todos os contratos cadastrados (sem filtro por competência).
+    // /contratos (antigo) filtra por mes_competencia, ficando vazio em meses
+    // sem rodada PP — por isso usamos /contratos/cadastrados.
     apiClient
-      .get<ContratoItem[]>("/contratos")
-      .then((r) => {
-        // Dedup por id (um mesmo contrato pode aparecer em múltiplas competências)
-        const porId = new Map<string, ContratoItem>()
-        for (const c of r.data) {
-          if (!porId.has(c.id)) porId.set(c.id, c)
-        }
-        const unicos = Array.from(porId.values()).sort((a, b) => {
-          const ufCmp = (a.uf || "").localeCompare(b.uf || "")
-          return ufCmp !== 0 ? ufCmp : (a.cidade || "").localeCompare(b.cidade || "")
-        })
-        setContratos(unicos)
-      })
+      .get<ContratoItem[]>("/contratos/cadastrados")
+      .then((r) => setContratos(r.data))
       .catch(() => setContratos([]))
   }, [])
 

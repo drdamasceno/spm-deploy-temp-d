@@ -74,6 +74,21 @@ app.include_router(saldos.router)
 app.include_router(transacao_linha.router)
 
 
+@app.get("/version")
+def version():
+    """Retorna git commit do build. Útil pra confirmar qual deploy está live."""
+    import subprocess
+    try:
+        sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        ).decode().strip()
+    except Exception:
+        sha = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
+    return {"commit": sha, "service": "spm-api"}
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "service": "spm-api"}
