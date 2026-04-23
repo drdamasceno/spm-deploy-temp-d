@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { uploadOrcamento } from "@/lib/api/orcamento";
+import { uploadOrcamento, listarOrcamentos } from "@/lib/api/orcamento";
 import { toast } from "sonner";
-import type { EmpresaOut, ResultadoUploadOrcamento } from "@/types/v2";
+import type { EmpresaOut, OrcamentoOut, ResultadoUploadOrcamento } from "@/types/v2";
 
 export function UploadXlsxDialog({
   empresas,
@@ -30,57 +30,65 @@ export function UploadXlsxDialog({
   });
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [existente, setExistente] = useState<OrcamentoOut | null>(null);
+  const [substituir, setSubstituir] = useState(false);
+
+  // Detecta se já existe orçamento para (empresa, competência) assim que
+  // usuário seleciona/muda. Mostra aviso + checkbox "Substituir" no form —
+  // sem depender de pegar 409 no catch (era frágil porque depende do axios
+  // preservar response.data.detail em forma específica).
+  useEffect(() => {
+    if (!open || !empresa || !competencia) {
+      setExistente(null);
+      return;
+    }
+    let cancelou = false;
+    listarOrcamentos({ empresa_id: empresa, competencia })
+      .then((orcs) => {
+        if (cancelou) return;
+        setExistente(orcs[0] ?? null);
+      })
+      .catch(() => {
+        if (cancelou) return;
+        setExistente(null);
+      });
+    return () => {
+      cancelou = true;
+    };
+  }, [empresa, competencia, open]);
 
   if (!open) return null;
 
-  async function handleSubmit(e: React.FormEvent, force: boolean = false) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!arquivo || !empresa) {
       toast.error("Preencha todos os campos");
       return;
     }
+    if (existente && !substituir) {
+      toast.error(
+        "Já existe orçamento para essa competência. Marque 'Substituir' ou mude a competência."
+      );
+      return;
+    }
+    if (existente && existente.status === "FECHADO") {
+      toast.error("Orçamento FECHADO não pode ser substituído.");
+      return;
+    }
     setSubmitting(true);
     try {
-      const result = await uploadOrcamento(empresa, competencia, arquivo, force);
+      const result = await uploadOrcamento(
+        empresa,
+        competencia,
+        arquivo,
+        substituir
+      );
       toast.success(`${result.total_linhas_inseridas} linhas inseridas`);
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
-      const axiosErr = err as {
-        response?: {
-          status?: number;
-          data?: { detail?: unknown };
-        };
-      };
-      const status = axiosErr?.response?.status;
-      const detail = axiosErr?.response?.data?.detail;
-      const detailObj =
-        detail && typeof detail === "object"
-          ? (detail as Record<string, unknown>)
-          : null;
-      const detailStatus =
-        detailObj && typeof detailObj.status === "string"
-          ? (detailObj.status as string)
-          : null;
-      // Regra: qualquer 409 no /orcamentos/upload significa "já existe
-      // orçamento pra essa (empresa, competência)". Perguntamos se substitui.
-      if (status === 409 && !force) {
-        if (detailStatus === "FECHADO") {
-          toast.error(
-            "Já existe um orçamento FECHADO para essa competência. Não pode ser substituído."
-          );
-        } else if (
-          confirm(
-            `Já existe orçamento para ${competencia}. Substituir? (as linhas atuais serão DELETADAS)`
-          )
-        ) {
-          setSubmitting(false);
-          return handleSubmit(e, true);
-        }
-      } else {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error("Falha no upload: " + msg);
-      }
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("Falha no upload: " + msg);
     } finally {
       setSubmitting(false);
     }
@@ -122,6 +130,40 @@ export function UploadXlsxDialog({
             onChange={(e) => setCompetencia(e.target.value)}
           />
         </div>
+
+        {existente && (
+          <div
+            className={`rounded border p-3 text-xs ${
+              existente.status === "FECHADO"
+                ? "bg-red-50 border-red-300 text-red-900"
+                : "bg-amber-50 border-amber-300 text-amber-900"
+            }`}
+          >
+            <div className="font-semibold mb-1">
+              ⚠ Já existe orçamento para {competencia} (status: {existente.status})
+            </div>
+            {existente.status === "FECHADO" ? (
+              <div>
+                Orçamento FECHADO não pode ser substituído via upload. Reabra na
+                tela principal antes.
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 cursor-pointer mt-1">
+                <input
+                  type="checkbox"
+                  checked={substituir}
+                  onChange={(e) => setSubstituir(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span>
+                  <b>Substituir</b> — as {"{"}linhas{"}"} do orçamento atual
+                  serão DELETADAS antes do novo upload
+                </span>
+              </label>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="text-xs text-slate-600 block mb-1">Arquivo XLSX</label>
           <input
@@ -141,7 +183,11 @@ export function UploadXlsxDialog({
           </button>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={
+              submitting ||
+              (existente !== null &&
+                (existente.status === "FECHADO" || !substituir))
+            }
             className="px-3 py-1 text-sm rounded bg-slate-900 text-white disabled:opacity-50"
           >
             {submitting ? "Enviando..." : "Upload"}
