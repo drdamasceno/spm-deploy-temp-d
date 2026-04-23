@@ -12,6 +12,10 @@ interface Props {
   categoriaPorId?: Record<string, CategoriaOut>;
   projetoPorId?: Record<string, ProjetoOut>;
   onRowClick?: (linha: OrcamentoLinhaOut) => void;
+  /** Mapa empresa_id → codigo (ex: "FD", "SPM"). Usado pra renderizar badge. */
+  empresaCodigoPorId?: Record<string, string>;
+  /** Empresa do orçamento atual. Se empresa_pagadora = essa, badge é redundante e some. */
+  empresaOrcamentoId?: string;
 }
 
 function TabelaLinhasImpl({
@@ -19,6 +23,8 @@ function TabelaLinhasImpl({
   categoriaPorId,
   projetoPorId,
   onRowClick,
+  empresaCodigoPorId,
+  empresaOrcamentoId,
 }: Props) {
   if (!linhas.length) {
     return (
@@ -82,14 +88,15 @@ function TabelaLinhasImpl({
                 <td className="px-3 py-2 font-medium text-slate-900">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span>{l.titular_razao_social}</span>
-                    {l.empresa_pagadora_id && (
-                      <span
-                        className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800"
-                        title="Pago via FD (empresa pagadora distinta)"
-                      >
-                        FD
-                      </span>
-                    )}
+                    {l.empresa_pagadora_id &&
+                      l.empresa_pagadora_id !== empresaOrcamentoId && (
+                        <span
+                          className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800"
+                          title={`Pago via ${empresaCodigoPorId?.[l.empresa_pagadora_id] ?? "empresa do grupo"} (empresa pagadora distinta)`}
+                        >
+                          {empresaCodigoPorId?.[l.empresa_pagadora_id] ?? "?"}
+                        </span>
+                      )}
                   </div>
                   {l.titular_cpf_cnpj && (
                     <div className="text-[10px] text-slate-500">

@@ -247,6 +247,8 @@ export default function OrcamentoPage() {
             categoriaPorId={categoriaPorId}
             projetoPorId={projetoPorId}
             onRowClick={(l) => setLinhaEditando(l)}
+            empresaCodigoPorId={Object.fromEntries(empresas.map((e) => [e.id, e.codigo]))}
+            empresaOrcamentoId={orcamentoAtual?.empresa_id}
           />
         </>
       ) : (
