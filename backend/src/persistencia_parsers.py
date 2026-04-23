@@ -1,5 +1,6 @@
 """Glue entre parsers (Python puro) e Supabase (persistência)."""
-from typing import Dict, List
+import re
+from typing import Dict, List, Optional
 from uuid import UUID
 from supabase import Client
 from postgrest.exceptions import APIError
@@ -55,12 +56,47 @@ def persistir_orcamento_xlsx(
         for e in client.table("empresa").select("id,codigo").execute().data
     }
 
+    # Lookup de contratos para match por UF + cidade (usado em linhas cujo
+    # projeto tem formato "UF - CIDADE ..." — tipicamente DESPESA_PROFISSIONAIS
+    # e FATURAMENTO derivadas da seção PROFISSIONAIS do XLSX).
+    contratos = (
+        client.table("contrato")
+        .select("id,uf,cidade,nome")
+        .execute()
+        .data
+        or []
+    )
+
+    def _resolver_contrato_id(projeto: Optional[str]) -> Optional[str]:
+        """Tenta achar contrato_id via parse 'UF - CIDADE' do texto do projeto.
+
+        Exemplo: 'PR - BANDEIRANTES' → uf=PR, cidade=BANDEIRANTES.
+        Retorna None se não achar match — campo fica NULL, não bloqueia insert.
+        """
+        if not projeto:
+            return None
+        m = re.match(r"^\s*([A-Z]{2})\s*[-–]\s*(.+?)\s*$", projeto.strip(), re.I)
+        if not m:
+            return None
+        uf = m.group(1).upper()
+        cidade_busca = m.group(2).strip().upper()
+        # Match exato uf+cidade
+        for c in contratos:
+            if (c.get("uf") or "").upper() == uf and (c.get("cidade") or "").upper() == cidade_busca:
+                return c["id"]
+        # Match por prefixo de cidade (casos tipo "CISMEPAR - CAMBÉ" não estão em contrato)
+        for c in contratos:
+            if (c.get("uf") or "").upper() == uf and cidade_busca.startswith((c.get("cidade") or "").upper()):
+                return c["id"]
+        return None
+
     rows_para_inserir = []
     avisos: List[str] = []
     for linha in resultado.linhas:
         cat_id = mapa_categoria.get((linha.categoria or "").upper())
         proj_id = mapa_projeto.get((linha.projeto or "").upper())
         emp_id = empresa_by_codigo.get(linha.empresa_codigo, str(empresa_id))
+        contrato_id = _resolver_contrato_id(linha.projeto)
         if linha.projeto and not proj_id:
             avisos.append(f"Projeto '{linha.projeto}' (linha XLSX {linha.linha_xlsx}) não cadastrado — campo ficou NULL.")
         rows_para_inserir.append({
@@ -68,6 +104,7 @@ def persistir_orcamento_xlsx(
             "natureza": linha.natureza.value,
             "categoria_id": cat_id,
             "projeto_id": proj_id,
+            "contrato_id": contrato_id,
             "titular_cpf_cnpj": linha.titular_cpf_cnpj,
             "titular_razao_social": linha.titular_razao_social,
             "valor_previsto": linha.valor_previsto,

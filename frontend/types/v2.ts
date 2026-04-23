@@ -29,7 +29,8 @@ export type NaturezaOrcamento =
   | "SALARIO_VARIAVEL"
   | "COMISSAO"
   | "VALOR_VARIAVEL"
-  | "DESPESA_PROFISSIONAIS";
+  | "DESPESA_PROFISSIONAIS"
+  | "FATURAMENTO";
 
 export interface OrcamentoOut {
   id: string;

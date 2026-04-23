@@ -9,6 +9,7 @@ const TABS: { natureza: NaturezaOrcamento; label: string }[] = [
   { natureza: "COMISSAO", label: "Comissões" },
   { natureza: "VALOR_VARIAVEL", label: "Variáveis · Outros" },
   { natureza: "DESPESA_PROFISSIONAIS", label: "Profissionais (PP)" },
+  { natureza: "FATURAMENTO", label: "Faturamento" },
 ];
 
 export function TabsSecoes({

@@ -35,6 +35,7 @@ class NaturezaOrcamento(str, Enum):
     COMISSAO = "COMISSAO"
     VALOR_VARIAVEL = "VALOR_VARIAVEL"
     DESPESA_PROFISSIONAIS = "DESPESA_PROFISSIONAIS"
+    FATURAMENTO = "FATURAMENTO"
 
 
 # Padrões regex para matching dos subcabeçalhos (case-insensitive, tolerante a espaços)
@@ -219,6 +220,79 @@ def _extrair_uma_linha(ws, row_idx: int, natureza: NaturezaOrcamento) -> Orcamen
     )
 
 
+def _extrair_linhas_profissionais(ws, row_idx: int) -> List[OrcamentoLinhaParsed]:
+    """Na seção DESPESAS DE PROFISSIONAIS, cada linha do XLSX representa um
+    contrato (coluna Projeto, ex: 'PR - BANDEIRANTES') e tem DUAS colunas de
+    valor: RECEITA (col F / _COL_VALOR) e DESPESAS (col G / _COL_VALOR_LIQUIDO).
+
+    Geramos até 2 OrcamentoLinhaParsed por linha do XLSX:
+      - DESPESA_PROFISSIONAIS com valor = DESPESAS (quando > 0)
+      - FATURAMENTO com valor = RECEITA (quando > 0)
+
+    `titular_razao_social` recebe o PROJETO (o contrato), não a Razão Social
+    (que no XLSX é sempre 'SOCIEDADE PARANAENSE DE MEDICINA LTDA', inútil
+    como identificador).
+    """
+    cnpj = _normalizar_cnpj(ws.cell(row=row_idx, column=_COL_CNPJ).value)
+    categoria = ws.cell(row=row_idx, column=_COL_CATEGORIA).value
+    projeto_raw = ws.cell(row=row_idx, column=_COL_PROJETO).value
+    receita = ws.cell(row=row_idx, column=_COL_VALOR).value  # coluna F (RECEITA)
+    despesa = ws.cell(row=row_idx, column=_COL_VALOR_LIQUIDO).value  # coluna G (DESPESAS)
+    data_previsao = _normalizar_data(ws.cell(row=row_idx, column=_COL_DATA).value)
+    obs = ws.cell(row=row_idx, column=_COL_OBS).value
+
+    projeto = str(projeto_raw).strip() if isinstance(projeto_raw, str) else None
+    if not projeto:
+        return []  # sem projeto, não dá para identificar o contrato — descarta
+
+    linhas: List[OrcamentoLinhaParsed] = []
+    categoria_str = str(categoria).strip() if isinstance(categoria, str) else None
+    obs_str = str(obs).strip() if isinstance(obs, str) else None
+
+    if isinstance(despesa, (int, float)) and despesa > 0:
+        linhas.append(OrcamentoLinhaParsed(
+            natureza=NaturezaOrcamento.DESPESA_PROFISSIONAIS,
+            titular_razao_social=projeto,
+            titular_cpf_cnpj=cnpj,
+            categoria=categoria_str,
+            projeto=projeto,
+            valor_previsto=float(despesa),
+            data_previsao=data_previsao,
+            observacao=obs_str,
+            linha_xlsx=row_idx,
+        ))
+    if isinstance(receita, (int, float)) and receita > 0:
+        linhas.append(OrcamentoLinhaParsed(
+            natureza=NaturezaOrcamento.FATURAMENTO,
+            titular_razao_social=projeto,
+            titular_cpf_cnpj=cnpj,
+            categoria=categoria_str,
+            projeto=projeto,
+            valor_previsto=float(receita),
+            data_previsao=data_previsao,
+            observacao=obs_str,
+            linha_xlsx=row_idx,
+        ))
+    return linhas
+
+
+def _linha_profissionais_eh_valida(ws, row_idx: int) -> bool:
+    """Linha de PROFISSIONAIS é válida se tem projeto E (receita > 0 OU despesa > 0)."""
+    projeto = ws.cell(row=row_idx, column=_COL_PROJETO).value
+    if not isinstance(projeto, str) or not projeto.strip():
+        return False
+    receita = ws.cell(row=row_idx, column=_COL_VALOR).value
+    despesa = ws.cell(row=row_idx, column=_COL_VALOR_LIQUIDO).value
+    tem_receita = isinstance(receita, (int, float)) and receita > 0
+    tem_despesa = isinstance(despesa, (int, float)) and despesa > 0
+    if not (tem_receita or tem_despesa):
+        return False
+    # Descarta cabeçalho
+    if projeto.strip().lower() in {"projeto", "razão social", "razao social"}:
+        return False
+    return True
+
+
 # Adicionar como método da classe OrcamentoParser:
 def _extrair_linhas_secao_impl(self, arquivo, natureza: NaturezaOrcamento) -> List[OrcamentoLinhaParsed]:
     wb = self._abrir(arquivo)
@@ -260,8 +334,14 @@ def _extrair_linhas_secao_impl(self, arquivo, natureza: NaturezaOrcamento) -> Li
                 continue
             else:
                 linhas_vazias_consecutivas = 0
-        if _linha_eh_valida(ws, row_idx, natureza):
-            linhas.append(_extrair_uma_linha(ws, row_idx, natureza))
+        if natureza == NaturezaOrcamento.DESPESA_PROFISSIONAIS:
+            # Seção PROFISSIONAIS usa extrator especial que gera até 2 linhas
+            # (DESPESA_PROFISSIONAIS + FATURAMENTO) por linha do XLSX.
+            if _linha_profissionais_eh_valida(ws, row_idx):
+                linhas.extend(_extrair_linhas_profissionais(ws, row_idx))
+        else:
+            if _linha_eh_valida(ws, row_idx, natureza):
+                linhas.append(_extrair_uma_linha(ws, row_idx, natureza))
     return linhas
 
 
@@ -289,16 +369,22 @@ def _derivar_empresa(projeto: Optional[str]) -> str:
 
 def _parse_completo_impl(self, arquivo) -> ResultadoParse:
     todas_linhas: List[OrcamentoLinhaParsed] = []
-    por_secao: dict[NaturezaOrcamento, int] = {}
+    por_secao: dict[NaturezaOrcamento, int] = {n: 0 for n in NaturezaOrcamento}
     avisos: List[str] = []
     descartadas = 0
 
+    # FATURAMENTO não tem subheader próprio — é gerado DENTRO do extrator de
+    # DESPESA_PROFISSIONAIS (uma linha do XLSX pode virar 2 parsed: despesa + receita).
+    # Por isso pulamos FATURAMENTO no loop de extração, mas contamos por natureza
+    # real retornada em cada linha.
     for natureza in NaturezaOrcamento:
+        if natureza == NaturezaOrcamento.FATURAMENTO:
+            continue
         linhas = self.extrair_linhas_secao(arquivo, natureza)
         for l in linhas:
             l.empresa_codigo = _derivar_empresa(l.projeto)
             todas_linhas.append(l)
-        por_secao[natureza] = len(linhas)
+            por_secao[l.natureza] = por_secao.get(l.natureza, 0) + 1
 
     return ResultadoParse(
         linhas=todas_linhas,

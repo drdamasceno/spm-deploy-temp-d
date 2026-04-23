@@ -95,6 +95,7 @@ export default function OrcamentoPage() {
       COMISSAO: 0,
       VALOR_VARIAVEL: 0,
       DESPESA_PROFISSIONAIS: 0,
+      FATURAMENTO: 0,
     };
     linhas.forEach((l) => {
       m[l.natureza] = (m[l.natureza] ?? 0) + 1;
@@ -228,6 +229,10 @@ export default function OrcamentoPage() {
           <KpiMini
             label="Profissionais PP"
             value={formatBRL(totaisPorSecao["DESPESA_PROFISSIONAIS"] ?? 0)}
+          />
+          <KpiMini
+            label="Faturamento"
+            value={formatBRL(totaisPorSecao["FATURAMENTO"] ?? 0)}
           />
         </div>
       )}
