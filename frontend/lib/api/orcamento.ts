@@ -34,12 +34,14 @@ export async function criarOrcamento(
 export async function uploadOrcamento(
   empresa_id: string,
   competencia: string,
-  arquivo: File | Blob
+  arquivo: File | Blob,
+  force: boolean = false
 ): Promise<ResultadoUploadOrcamento> {
   const form = new FormData()
   form.append("empresa_id", empresa_id)
   form.append("competencia", competencia)
   form.append("arquivo", arquivo)
+  if (force) form.append("force", "true")
   const { data } = await apiClient.post<ResultadoUploadOrcamento>(
     "/orcamentos/upload",
     form,

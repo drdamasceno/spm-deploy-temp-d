@@ -54,14 +54,42 @@ def upload(
     empresa_id: UUID = Form(...),
     competencia: str = Form(..., pattern=r"^\d{4}-\d{2}$"),
     arquivo: UploadFile = File(...),
+    force: bool = Form(False),
     current=Depends(get_current_user),
 ):
+    """Upload de orçamento XLSX.
+
+    Se já existir orçamento para (empresa, competência):
+      - force=False (default): retorna 409 com flag `exists` para a UI poder
+        perguntar ao usuário se quer substituir.
+      - force=True: deleta o orçamento existente (e suas linhas via CASCADE)
+        antes de inserir o novo.
+    """
     client = get_supabase_authed(current["jwt"])
     bytes_xlsx = arquivo.file.read()
+
+    if force:
+        existentes = (
+            client.table("orcamento")
+            .select("id,status")
+            .eq("empresa_id", str(empresa_id))
+            .eq("competencia", competencia)
+            .execute()
+            .data
+            or []
+        )
+        for o in existentes:
+            if o.get("status") == "FECHADO":
+                raise HTTPException(
+                    409,
+                    detail={"error": "Orçamento FECHADO não pode ser substituído", "exists": True, "status": "FECHADO"},
+                )
+            client.table("orcamento").delete().eq("id", o["id"]).execute()
+
     try:
         return persistir_orcamento_xlsx(client, bytes_xlsx, empresa_id, competencia, current["id"])
     except ValueError as e:
-        raise HTTPException(409, detail={"error": str(e)})
+        raise HTTPException(409, detail={"error": str(e), "exists": True})
 
 
 @router.patch("/{orcamento_id}/validar", response_model=OrcamentoOut)

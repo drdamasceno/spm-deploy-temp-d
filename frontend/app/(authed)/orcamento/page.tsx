@@ -131,7 +131,10 @@ export default function OrcamentoPage() {
   }, [linhas]);
 
   const totalGeral = useMemo(
-    () => linhas.reduce((acc, l) => acc + l.valor_previsto, 0),
+    () =>
+      linhas
+        .filter((l) => l.natureza !== "FATURAMENTO")
+        .reduce((acc, l) => acc + l.valor_previsto, 0),
     [linhas]
   );
 

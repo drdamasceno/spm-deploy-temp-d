@@ -33,7 +33,7 @@ export function UploadXlsxDialog({
 
   if (!open) return null;
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent, force: boolean = false) {
     e.preventDefault();
     if (!arquivo || !empresa) {
       toast.error("Preencha todos os campos");
@@ -41,13 +41,31 @@ export function UploadXlsxDialog({
     }
     setSubmitting(true);
     try {
-      const result = await uploadOrcamento(empresa, competencia, arquivo);
+      const result = await uploadOrcamento(empresa, competencia, arquivo, force);
       toast.success(`${result.total_linhas_inseridas} linhas inseridas`);
       onSuccess(result);
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error("Falha no upload: " + msg);
+      const axiosErr = err as { response?: { status?: number; data?: { detail?: { exists?: boolean; status?: string } } } };
+      const status = axiosErr?.response?.status;
+      const detail = axiosErr?.response?.data?.detail;
+      if (status === 409 && detail?.exists && !force) {
+        if (detail.status === "FECHADO") {
+          toast.error(
+            "Já existe um orçamento FECHADO para essa competência. Não pode ser substituído."
+          );
+        } else if (
+          confirm(
+            `Já existe orçamento para ${competencia}. Substituir? (linhas atuais serão DELETADAS)`
+          )
+        ) {
+          // re-chama com force=true
+          return handleSubmit(e, true);
+        }
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error("Falha no upload: " + msg);
+      }
     } finally {
       setSubmitting(false);
     }
