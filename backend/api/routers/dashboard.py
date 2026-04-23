@@ -158,10 +158,7 @@ def dashboard(
             pct=round(pct, 2),
         ))
 
-    # --- 7. KPIs ---
-    # saldo_inicial / saldo_atual: simplificação — saldos reais exigem materializar
-    # snapshot mensal (débito técnico — spec §3.1 Fase 2). MVP: inicial=0,
-    # saldo_atual = sum creditos - sum debitos do mes.
+    # --- 7. KPIs (Track B: fix saldo_inicial hardcoded + saldo_atual = liquidez real) ---
     creditos_rows = (
         client.table("transacao_bancaria")
         .select("valor")
@@ -171,12 +168,14 @@ def dashboard(
         .execute()
         .data
     )
-    creditos = sum(float(t["valor"]) for t in creditos_rows)
+    entradas_do_mes = sum(float(t["valor"]) for t in creditos_rows)
     saidas_mes = saidas_total
-    saldo_inicial = 0.0  # MVP — ver débito técnico no spec §3.1 Fase 2
-    saldo_atual = saldo_inicial + creditos - saidas_mes
+
+    from backend.api.routers.saldos import get_liquidez_total
+    saldo_atual = get_liquidez_total(client)
+
     kpis = KPIs(
-        saldo_inicial=round(saldo_inicial, 2),
+        entradas_do_mes=round(entradas_do_mes, 2),
         saidas_mes=round(saidas_mes, 2),
         previsto_a_pagar=round(previsto_total, 2),
         saldo_atual=round(saldo_atual, 2),

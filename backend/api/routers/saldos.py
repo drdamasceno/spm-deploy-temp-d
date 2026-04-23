@@ -19,6 +19,39 @@ from backend.api.schemas.saldos import (
 router = APIRouter(tags=["saldos"])
 
 
+def get_liquidez_total(client) -> float:
+    """Retorna liquidez total atual (últimos snapshots de CC + aplicações ativas).
+
+    Função pública idempotente, sem mutação. Usada pelo Dashboard (Track B)
+    para calcular `saldo_atual` coerente com `/saldos/dashboard.liquidez_total`.
+    """
+    contas = client.table("conta_bancaria").select("id").execute().data or []
+    saldo_cc = 0.0
+    for c in contas:
+        snap = (
+            client.table("saldo_conta_snapshot")
+            .select("saldo_valor")
+            .eq("conta_bancaria_id", c["id"])
+            .order("data_referencia", desc=True)
+            .order("criado_em", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if snap:
+            saldo_cc += float(snap[0]["saldo_valor"])
+    apls = (
+        client.table("aplicacao_financeira")
+        .select("valor_atual")
+        .eq("ativo", True)
+        .execute()
+        .data
+        or []
+    )
+    saldo_apl = sum(float(a["valor_atual"]) for a in apls)
+    return saldo_cc + saldo_apl
+
+
 @router.get("/saldos/dashboard", response_model=DashboardSaldos)
 def dashboard(current=Depends(get_current_user)):
     """Retorna contas correntes (último snapshot por conta) + aplicações ativas + totais."""

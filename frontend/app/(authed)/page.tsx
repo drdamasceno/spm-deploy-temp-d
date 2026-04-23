@@ -1,22 +1,42 @@
 "use client"
 import { useCallback, useEffect, useState } from "react"
 import { useFilters } from "@/lib/filters-context"
-import { fetchDashboard } from "@/lib/api/dashboard"
+import {
+  fetchDashboard,
+  fetchEvolucaoCaixa,
+  fetchCompromissos,
+  fetchRecebiveis,
+  fetchReceitaFinanceira,
+} from "@/lib/api/dashboard"
 import { fetchDashboardSaldos } from "@/lib/api/saldos"
-import type { DashboardResponse, DashboardSaldos } from "@/types/v2"
+import type {
+  DashboardResponse,
+  DashboardSaldos,
+  EvolucaoCaixaResponse,
+  CompromissosResponse,
+  RecebiveisResponse,
+  ReceitaFinanceiraResponse,
+} from "@/types/v2"
 import { KpisGrid } from "@/components/dashboard/kpis-grid"
-import { DonutNaturezas } from "@/components/dashboard/donut-naturezas"
-import { BarrasPxR } from "@/components/dashboard/barras-pxr"
 import { AlertasList } from "@/components/dashboard/alertas-list"
 import { LiquidezBanner } from "@/components/saldos/liquidez-banner"
 import { ContasCorrentesSection } from "@/components/saldos/contas-correntes-section"
 import { AplicacoesSection } from "@/components/saldos/aplicacoes-section"
+import { EvolucaoCaixaCard } from "@/components/dashboard/evolucao-caixa-card"
+import { ReceitaFinanceiraCard } from "@/components/dashboard/receita-financeira-card"
+import { CompromissosCard } from "@/components/dashboard/compromissos-card"
+import { RecebiveisCard } from "@/components/dashboard/recebiveis-card"
+import { TendenciaGrid } from "@/components/dashboard/tendencia"
 import { toast } from "sonner"
 
 export default function DashboardPage() {
   const { empresa, competencia } = useFilters()
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [saldos, setSaldos] = useState<DashboardSaldos | null>(null)
+  const [evolucao, setEvolucao] = useState<EvolucaoCaixaResponse | null>(null)
+  const [compromissos, setCompromissos] = useState<CompromissosResponse | null>(null)
+  const [recebiveis, setRecebiveis] = useState<RecebiveisResponse | null>(null)
+  const [receita, setReceita] = useState<ReceitaFinanceiraResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
   const carregarSaldos = useCallback(async () => {
@@ -34,8 +54,19 @@ export default function DashboardPage() {
     Promise.all([
       fetchDashboard({ competencia, empresa }),
       fetchDashboardSaldos(),
+      fetchEvolucaoCaixa(competencia).catch(() => null),
+      fetchCompromissos().catch(() => null),
+      fetchRecebiveis().catch(() => null),
+      fetchReceitaFinanceira(competencia).catch(() => null),
     ])
-      .then(([d, s]) => { setData(d); setSaldos(s) })
+      .then(([d, s, ev, co, re, rf]) => {
+        setData(d)
+        setSaldos(s)
+        setEvolucao(ev)
+        setCompromissos(co)
+        setRecebiveis(re)
+        setReceita(rf)
+      })
       .catch((err) => {
         console.error(err)
         toast.error("Falha ao carregar dashboard: " + (err instanceof Error ? err.message : "erro"))
@@ -47,7 +78,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col">
-      {/* Banner de liquidez (novo — Track D) */}
+      {/* 1. Banner de liquidez + contas/aplicações */}
       {saldos && (
         <>
           <LiquidezBanner
@@ -62,38 +93,49 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* Dashboard atual abaixo */}
+      {/* 2. Corpo principal */}
       {data && (
         <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-semibold text-slate-900">
-              Pra onde foi o dinheiro · {formatCompetencia(data.competencia)}
-            </h1>
-          </div>
+          {/* 2a. Evolução do caixa */}
+          {evolucao && <EvolucaoCaixaCard data={evolucao} />}
 
-          <KpisGrid kpis={data.kpis} />
-
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-3">
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <h2 className="text-xs font-semibold uppercase text-slate-600 tracking-wide mb-3">
-                Saídas por natureza
-              </h2>
-              <DonutNaturezas saidas={data.saidas_por_natureza} />
+          {/* 2b. Pra onde foi o dinheiro (KPIs + link pra subpágina) */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h1 className="text-lg font-semibold text-slate-900">
+                Pra onde foi o dinheiro · {formatCompetencia(data.competencia)}
+              </h1>
+              <a
+                href="/dashboard/saidas"
+                className="text-xs text-blue-700 hover:text-blue-900"
+              >
+                Ver detalhamento por bolso →
+              </a>
             </div>
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <h2 className="text-xs font-semibold uppercase text-slate-600 tracking-wide mb-3">
-                Previsto × Realizado por categoria
-              </h2>
-              <BarrasPxR barras={data.previsto_x_realizado} />
-            </div>
+            <KpisGrid kpis={data.kpis} />
           </div>
 
-          <div className="bg-white border border-red-200 rounded-lg p-4">
-            <h2 className="text-xs font-semibold uppercase text-red-700 tracking-wide mb-3">
-              ⚠ Alertas — {data.alertas.length} item(s)
-            </h2>
-            <AlertasList alertas={data.alertas} />
+          {/* 2c. Risco operacional */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {compromissos && <CompromissosCard data={compromissos} />}
+            {recebiveis && <RecebiveisCard data={recebiveis} />}
           </div>
+
+          {/* 2d. Receita financeira (card destacado) */}
+          {receita && <ReceitaFinanceiraCard data={receita} />}
+
+          {/* 2e. Tendência 6m (rodapé) */}
+          <TendenciaGrid />
+
+          {/* 2f. Alertas */}
+          {data.alertas.length > 0 && (
+            <div className="bg-white border border-red-200 rounded-lg p-4">
+              <h2 className="text-xs font-semibold uppercase text-red-700 tracking-wide mb-3">
+                ⚠ Alertas — {data.alertas.length} item(s)
+              </h2>
+              <AlertasList alertas={data.alertas} />
+            </div>
+          )}
         </div>
       )}
     </div>

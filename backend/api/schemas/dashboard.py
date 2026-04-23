@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class KPIs(BaseModel):
-    saldo_inicial: float
+    entradas_do_mes: float
     saidas_mes: float
     previsto_a_pagar: float
     saldo_atual: float

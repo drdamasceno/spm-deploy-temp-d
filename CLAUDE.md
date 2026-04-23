@@ -107,6 +107,26 @@ Use via: `python backend/conciliar_spm.py ... --excecoes excecoes.json`
 - Bloco E: pagamentos e validação (próximo)
 - Frontend: Next.js 16 (pendente validação do Bloco D)
 
+## Limites de escopo: software vs jurídico-contábil
+
+Este repositório implementa a camada de **software** (visualização, controle de caixa, conciliação, dashboards). NÃO implementa camada jurídico-contábil.
+
+**O sistema faz:**
+- Separar bolsos financeiros (SPM operacional / FD via SPM / Hugo pessoal / investimento) como dimensão gerencial
+- Split de transações (ex: fatura cartão metade SPM / metade pessoal)
+- Vincular prestador a PJ empregadora (evita duplicidade CLT FD ↔ PP)
+- Dashboard consolidador acima das entidades
+
+**O sistema NÃO faz:**
+- Emitir NFE
+- Escriturar livros contábeis por CNPJ (responsabilidade do Fortcon)
+- Formalizar contratos inter-company (SPM↔FD) ou mútuo com sócio (SPM↔Hugo PF)
+- Gerar apurações tributárias
+
+**Recomendações jurídico-contábeis:** ver `~/second-brain/dominios/spm/recomendacoes-juridico-contabeis.md`. Contratos pendentes (conta corrente SPM↔FD, mútuo SPM↔Hugo PF, política formal de distribuição de lucros) são responsabilidade de advogado tributarista + Fortcon. O desenho de features no software **não depende** desses contratos estarem assinados — o software opera independentemente.
+
+**Regra:** quando surgir tema jurídico-contábil durante desenvolvimento, apontar para a nota do vault e manter foco no software.
+
 ## Estrutura do backend web
 
 - backend/api/main.py — entrypoint FastAPI (sem prefix /api; rotas diretas: /auth, /rodadas, /excecoes_pj)

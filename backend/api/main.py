@@ -13,6 +13,10 @@ from backend.api.routers import (
     conciliacao,
     contratos_competencia,
     dashboard,
+    dashboard_compromissos_recebiveis,
+    dashboard_evolucao,
+    dashboard_historico,
+    dashboard_receita_financeira,
     excecao_pj,
     extratos,
     orcamento,
@@ -59,6 +63,10 @@ app.include_router(regra_classificacao.router)
 app.include_router(adiantamento.router)
 app.include_router(contratos_competencia.router)
 app.include_router(dashboard.router)
+app.include_router(dashboard_evolucao.router)
+app.include_router(dashboard_compromissos_recebiveis.router)
+app.include_router(dashboard_receita_financeira.router)
+app.include_router(dashboard_historico.router)
 app.include_router(saldos.router)
 
 

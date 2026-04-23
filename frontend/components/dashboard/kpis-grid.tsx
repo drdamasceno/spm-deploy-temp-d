@@ -26,7 +26,7 @@ function KpiCard({ label, value }: KpiCardProps) {
 export function KpisGrid({ kpis }: KpisGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      <KpiCard label="Saldo inicial" value={kpis.saldo_inicial} />
+      <KpiCard label="Entradas do mês" value={kpis.entradas_do_mes} />
       <KpiCard label="Saídas do mês" value={kpis.saidas_mes} />
       <KpiCard label="Previsto a pagar" value={kpis.previsto_a_pagar} />
       <KpiCard label="Saldo atual" value={kpis.saldo_atual} />

@@ -139,7 +139,7 @@ export interface ContratoCompetenciaOut {
 }
 
 export interface KPIs {
-  saldo_inicial: number;
+  entradas_do_mes: number;
   saidas_mes: number;
   previsto_a_pagar: number;
   saldo_atual: number;
@@ -166,6 +166,67 @@ export interface DashboardResponse {
   saidas_por_natureza: Record<string, number>;
   previsto_x_realizado: BarraPxR[];
   alertas: Alerta[];
+}
+
+// ─── Dashboard v2 (Track B) ────────────────────────────────────────────────
+
+export interface EvolucaoCaixaResponse {
+  abertura_data: string;
+  abertura_valor: number;
+  hoje_data: string;
+  hoje_valor: number;
+  variacao_valor: number;
+  variacao_pct: number;
+  sparkline: number[];
+}
+
+export interface CompromissoItem {
+  fonte: "PP" | "FATURA" | string;
+  descricao: string;
+  valor: number;
+  vencimento: string | null;
+}
+
+export interface CompromissosResponse {
+  total: number;
+  por_fonte: Record<string, number>;
+  itens: CompromissoItem[];
+}
+
+export interface RecebivelItem {
+  contratante: string;
+  valor: number;
+  dias_atraso: number;
+  faixa_aging: "0-30" | "30-60" | "60-90" | "90+" | string;
+}
+
+export interface RecebiveisResponse {
+  total: number;
+  por_aging: Record<string, number>;
+  itens: RecebivelItem[];
+}
+
+export interface ReceitaFinanceiraResponse {
+  rendimento_mes: number;
+  acumulado_ano: number;
+  rentabilidade_pct: number;
+  cdi_mes_pct: number;
+  percent_cdi: number;
+}
+
+export interface MesHistorico {
+  competencia: string;
+  liquidez: number;
+  faturamento: number;
+  despesa_fixa: number;
+  despesa_variavel: number;
+  tributo: number;
+  compromissos_abertos: number;
+  recebiveis_atraso: number;
+}
+
+export interface HistoricoResponse {
+  meses: MesHistorico[];
 }
 
 // Contratos por cidade (Track C)

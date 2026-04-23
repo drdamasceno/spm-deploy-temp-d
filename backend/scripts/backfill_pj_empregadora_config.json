@@ -1,0 +1,12 @@
+{
+  "comentario": "Backfill prestador.pj_empregadora_id para FD. Esta fase alcança só os CLTs que aparecem em prestador (ou seja, que entram no relatório PP). Regra: médicos NUNCA são CLT. Portanto só não-médicos entram aqui. Os demais CLTs FD (staff admin SPM/SM24, técnicos de enfermagem, farmacêutico, etc. de Itaju e Pedra Bela) NÃO estão em prestador — eles entram via orcamento_linha.empresa_pagadora_id no Plano 03 (Fase D).",
+  "empresa_codigo": "FD",
+  "prestadores": [
+    "KAROLINY DAIARA MARTINS DE OLIVEIRA",
+    "EDINALVA MACHADO DA SILVA"
+  ],
+  "contratos_lotados": {
+    "comentario": "Vazio nesta execução. Não usamos busca por cidade porque dentro do contrato Unai também há médicos plantonistas autônomos (não CLT). Match nominal explícito é mais seguro.",
+    "cidades": []
+  }
+}
