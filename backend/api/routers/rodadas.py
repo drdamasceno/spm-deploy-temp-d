@@ -569,7 +569,7 @@ def _load_registros_pp_para_motor(client: Client, rodada_id: str) -> List[dict]:
         client.table("registro_pp")
         .select(
             "id, mes_competencia, saldo_pp, status_saldo, local_pp,"
-            "prestador(id, nome, registro_profissional, uf, tipo_doc, cpf_cnpj, razao_social_pj, chave_pix),"
+            "prestador(id, nome, registro_profissional, uf, tipo_doc, cpf_cnpj, razao_social_pj, chave_pix, pj_empregadora_id),"
             "contrato(id, nome, uf, cidade)"
         )
         .eq("rodada_id", rodada_id)
@@ -579,6 +579,13 @@ def _load_registros_pp_para_motor(client: Client, rodada_id: str) -> List[dict]:
     for r in resp.data or []:
         p = r.get("prestador") or {}
         c = r.get("contrato") or {}
+        # Track B — Fase E: prestadores com pj_empregadora_id (CLTs da FD que
+        # aparecem no PP, ex: Karoliny/Edinalva) saem do pool individual de
+        # sugestões porque são pagos pelo PIX consolidado SPM→FD (conciliação
+        # em lote via POST /conciliacoes/intragrupo). Deixá-los aqui causaria
+        # duplo débito (match individual + consumo em lote do mesmo CLT).
+        if p.get("pj_empregadora_id"):
+            continue
         pp_data.append({
             "_id": r["id"],
             "nome_prestador": p.get("nome") or "",

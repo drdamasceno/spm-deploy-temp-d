@@ -270,6 +270,181 @@ def criar_conciliacao(payload: ConciliacaoCreate, current=Depends(get_current_us
     return payload
 
 
+@router.get("/intragrupo/pendentes")
+def listar_intragrupo_pendentes(current=Depends(get_current_user)):
+    """Lista transações categoria=PAGAMENTO_INTRAGRUPO que ainda não foram
+    conciliadas em lote (sem conciliacao_orcamento associada).
+    """
+    client = get_supabase_authed(current["jwt"])
+    txs = (
+        client.table("transacao_bancaria")
+        .select("id,valor,titular_pix,data_extrato,descricao,status_conciliacao,categoria")
+        .eq("categoria", "PAGAMENTO_INTRAGRUPO")
+        .order("data_extrato", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    if not txs:
+        return {"transacoes": []}
+    ids = [t["id"] for t in txs]
+    ja_conciliadas = (
+        client.table("conciliacao_orcamento")
+        .select("transacao_id")
+        .in_("transacao_id", ids)
+        .execute()
+        .data
+        or []
+    )
+    conc_ids = {c["transacao_id"] for c in ja_conciliadas}
+    pendentes = [t for t in txs if t["id"] not in conc_ids]
+    return {"transacoes": pendentes}
+
+
+@router.post("/intragrupo/{transacao_id}")
+def conciliar_intragrupo_em_lote(
+    transacao_id: UUID,
+    current=Depends(get_current_user),
+):
+    """Concilia um PIX PAGAMENTO_INTRAGRUPO (ex: SPM→FD) em lote, consumindo
+    linhas de orçamento com empresa_pagadora_id da empresa destino em FIFO por
+    competência.
+
+    Regras (Track B Fase E):
+    - Transação precisa ter categoria=PAGAMENTO_INTRAGRUPO
+    - Resolve empresa destino via titular_pix da transação (match contra empresa.razao_social)
+    - Lista orcamento_linha WHERE empresa_pagadora_id = <empresa_destino>
+      ordenadas por (orcamento.competencia ASC, data_previsao ASC NULLS LAST)
+      com saldo pendente > 0
+    - Consome FIFO até esgotar o valor do PIX
+    - Resíduo (se PIX > soma das linhas) não vira conciliação — fica reportado
+      como 'nao_consumido' no retorno (Hugo decide se lança como adiantamento)
+    - Déficit (se PIX < soma das linhas) deixa linhas remanescentes em aberto
+
+    Retorna: {
+      conciliadas: [{orcamento_linha_id, valor_aplicado}],
+      valor_total_tx, valor_consumido, residuo_nao_consumido, linhas_restantes_em_aberto
+    }
+    """
+    client = get_supabase_authed(current["jwt"])
+
+    # 1. Carrega transação + valida que é PAGAMENTO_INTRAGRUPO
+    tx_rows = (
+        client.table("transacao_bancaria")
+        .select("id,valor,titular_pix,categoria,status_conciliacao")
+        .eq("id", str(transacao_id))
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not tx_rows:
+        raise HTTPException(404, detail={"error": "Transação não encontrada"})
+    tx = tx_rows[0]
+    if tx.get("categoria") != "PAGAMENTO_INTRAGRUPO":
+        raise HTTPException(
+            400,
+            detail={
+                "error": "Transação não é PAGAMENTO_INTRAGRUPO",
+                "categoria_atual": tx.get("categoria"),
+            },
+        )
+    valor_tx = abs(float(tx["valor"]))
+
+    # 2. Resolve empresa destino via razão social no titular_pix
+    titular = (tx.get("titular_pix") or "").upper()
+    empresas = client.table("empresa").select("id,codigo,razao_social").execute().data or []
+    empresa_destino_id = None
+    for e in empresas:
+        if (e.get("razao_social") or "").upper() in titular or (e.get("codigo") or "").upper() in titular:
+            empresa_destino_id = e["id"]
+            break
+    if not empresa_destino_id:
+        raise HTTPException(
+            400,
+            detail={"error": f"Não achei empresa do grupo no titular '{titular}'"},
+        )
+
+    # 3. Lista orcamento_linha com empresa_pagadora=<empresa_destino>,
+    #    ordenadas por competência do orçamento ASC e data_previsao ASC
+    linhas_raw = (
+        client.table("orcamento_linha")
+        .select("id,valor_previsto,data_previsao,titular_razao_social,orcamento_id,orcamento!inner(competencia)")
+        .eq("empresa_pagadora_id", str(empresa_destino_id))
+        .execute()
+        .data
+        or []
+    )
+    # Ordena por (competencia ASC, data_previsao ASC nulls last)
+    def _chave_fifo(l):
+        comp = (l.get("orcamento") or {}).get("competencia") or "9999-99"
+        dt = l.get("data_previsao") or "9999-12-31"
+        return (comp, dt)
+
+    linhas_raw.sort(key=_chave_fifo)
+
+    # 4. Filtra linhas com saldo pendente > 0 (subtrai conciliações já aplicadas)
+    ids_linhas = [l["id"] for l in linhas_raw]
+    conc_existentes = []
+    if ids_linhas:
+        conc_existentes = (
+            client.table("conciliacao_orcamento")
+            .select("orcamento_linha_id,valor_aplicado")
+            .in_("orcamento_linha_id", ids_linhas)
+            .execute()
+            .data
+            or []
+        )
+    ja_aplicado: dict = {}
+    for c in conc_existentes:
+        ja_aplicado[c["orcamento_linha_id"]] = ja_aplicado.get(c["orcamento_linha_id"], 0.0) + float(c["valor_aplicado"])
+
+    # 5. Consome FIFO
+    saldo_restante = valor_tx
+    conciliadas: list = []
+    remanescentes_em_aberto = 0
+    for l in linhas_raw:
+        if saldo_restante <= 0.005:
+            # Tx esgotou mas ainda há linhas — contabiliza para reporte
+            saldo_linha = float(l["valor_previsto"]) - ja_aplicado.get(l["id"], 0.0)
+            if saldo_linha > 0.005:
+                remanescentes_em_aberto += 1
+            continue
+        saldo_linha = float(l["valor_previsto"]) - ja_aplicado.get(l["id"], 0.0)
+        if saldo_linha <= 0.005:
+            continue
+        aplicar = min(saldo_linha, saldo_restante)
+        client.table("conciliacao_orcamento").insert({
+            "transacao_id": str(transacao_id),
+            "orcamento_linha_id": l["id"],
+            "valor_aplicado": round(aplicar, 2),
+            "confianca": 1.0,
+            "origem": "MANUAL",
+            "aprovada_por": current["id"],
+        }).execute()
+        conciliadas.append({
+            "orcamento_linha_id": l["id"],
+            "titular_razao_social": l.get("titular_razao_social"),
+            "valor_aplicado": round(aplicar, 2),
+        })
+        saldo_restante -= aplicar
+
+    # 6. Atualiza status da transação
+    if conciliadas:
+        client.table("transacao_bancaria").update({
+            "status_conciliacao": "MATCH_AUTOMATICO",
+        }).eq("id", str(transacao_id)).execute()
+
+    return {
+        "transacao_id": str(transacao_id),
+        "empresa_destino_id": empresa_destino_id,
+        "valor_total_tx": round(valor_tx, 2),
+        "valor_consumido": round(valor_tx - saldo_restante, 2),
+        "residuo_nao_consumido": round(max(saldo_restante, 0.0), 2),
+        "conciliadas": conciliadas,
+        "linhas_remanescentes_em_aberto": remanescentes_em_aberto,
+    }
+
+
 @router.delete("/{conciliacao_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deletar(conciliacao_id: UUID, current=Depends(get_current_user)):
     """Desfaz uma conciliacao e volta a transacao para NAO_CLASSIFICADO (se for a

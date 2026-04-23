@@ -199,7 +199,7 @@ export default function ConciliacaoPage() {
         <h1 className="text-lg font-semibold text-slate-900">
           Conciliacao Extrato x Orcamento · {competencia}
         </h1>
-        <div className="text-xs text-slate-600 flex gap-3 flex-wrap">
+        <div className="text-xs text-slate-600 flex gap-3 flex-wrap items-center">
           <span>
             <span className="text-emerald-600">●</span> REGRA:{" "}
             <b>{stats.REGRA}</b>
@@ -212,6 +212,13 @@ export default function ConciliacaoPage() {
             <span className="text-slate-400">●</span> VALOR:{" "}
             <b>{stats.VALOR}</b>
           </span>
+          <a
+            href="/conciliacao/intragrupo"
+            className="px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 text-[11px] font-medium"
+            title="Conciliar PIX SPM→FD em lote (FIFO contra linhas empresa_pagadora=FD)"
+          >
+            PIX intragrupo →
+          </a>
         </div>
       </div>
 
