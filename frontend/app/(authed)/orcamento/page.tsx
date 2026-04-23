@@ -11,7 +11,7 @@ import {
 import { TabsSecoes } from "@/components/orcamento/tabs-secoes";
 import { TabelaLinhas } from "@/components/orcamento/tabela-linhas";
 import { UploadXlsxDialog } from "@/components/orcamento/upload-xlsx-dialog";
-import { EditarLinhaDialog } from "@/components/orcamento/editar-linha-dialog";
+import { LinhaEditorModal } from "@/components/orcamento/linha-editor-modal";
 import type {
   EmpresaOut,
   CategoriaOut,
@@ -262,13 +262,21 @@ export default function OrcamentoPage() {
         onSuccess={() => recarregar()}
       />
 
-      <EditarLinhaDialog
+      <LinhaEditorModal
         linha={linhaEditando}
-        categorias={categorias}
-        projetos={projetos}
-        open={linhaEditando !== null}
-        onClose={() => setLinhaEditando(null)}
-        onSuccess={() => recarregar()}
+        categoriaPorId={categoriaPorId}
+        onClose={(atualizada) => {
+          if (atualizada) {
+            // Atualizacao local sem refetch completo.
+            setLinhas((prev) =>
+              prev.map((x) => (x.id === atualizada.id ? atualizada : x))
+            );
+          }
+          setLinhaEditando(null);
+        }}
+        onDelete={(linhaId) => {
+          setLinhas((prev) => prev.filter((x) => x.id !== linhaId));
+        }}
       />
     </div>
   );

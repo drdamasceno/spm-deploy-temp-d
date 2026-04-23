@@ -1,34 +1,40 @@
 "use client"
 import { useEffect, useState } from "react"
 import { useFilters } from "@/lib/filters-context"
-import { fetchDashboard } from "@/lib/api/dashboard"
-import type { DashboardResponse } from "@/types/v2"
+import { fetchDashboard, fetchSaidasPorBolso } from "@/lib/api/dashboard"
+import type { DashboardResponse, SaidasPorBolsoResponse } from "@/types/v2"
 import { DonutNaturezas } from "@/components/dashboard/donut-naturezas"
 import { BarrasPxR } from "@/components/dashboard/barras-pxr"
 import { formatBRL } from "@/lib/format"
 import { toast } from "sonner"
 
 /**
- * Stub da subpágina /dashboard/saidas.
+ * Subpágina /dashboard/saidas — drill-down por bolso.
  *
- * Objetivo desta fase (Track B Plano 02):
- * - Receber o tráfego que sai da home (onde os gráficos donut/barras
- *   deixaram de existir) e mostrar o detalhamento que vivia na home.
- * - Apresentar os 4 "bolsos" (SPM operacional, Via FD, Pessoal Hugo,
- *   Investimento Hugo) como agrupamento gerencial.
+ * Fonte dos bolsos: /dashboard/saidas-por-bolso agrega transacao_bancaria
+ * DEBITO do mês. Transação COM split usa as linhas filhas; transação SEM
+ * split cai toda em SPM_OPERACIONAL (fallback).
  *
- * Drill-down por bolso (lista de linhas individuais, por natureza, por
- * prestador) chega no Plano 03 (Fase D: UI de bolsos + split).
+ * Conforme Hugo classifica com split (tela /transacoes/[id]/split) ou com
+ * empresa_pagadora nas linhas do orçamento, os valores dos bolsos
+ * FD_VIA_SPM / HUGO_PESSOAL / INVESTIMENTO_HUGO saem de zero.
  */
 export default function SaidasPage() {
   const { empresa, competencia } = useFilters()
   const [data, setData] = useState<DashboardResponse | null>(null)
+  const [bolsos, setBolsos] = useState<SaidasPorBolsoResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    fetchDashboard({ competencia, empresa })
-      .then(setData)
+    Promise.all([
+      fetchDashboard({ competencia, empresa }),
+      fetchSaidasPorBolso(competencia).catch(() => null),
+    ])
+      .then(([d, b]) => {
+        setData(d)
+        setBolsos(b)
+      })
       .catch((err) => {
         toast.error(
           "Falha ao carregar saídas: " + (err instanceof Error ? err.message : "erro")
@@ -40,7 +46,8 @@ export default function SaidasPage() {
   if (loading) return <div className="p-6 text-slate-500">Carregando…</div>
   if (!data) return <div className="p-6 text-slate-500">Sem dados.</div>
 
-  const total = data.kpis.saidas_mes
+  const total = bolsos?.total ?? data.kpis.saidas_mes
+  const pct = (v: number) => (total > 0 ? (v / total) * 100 : 0)
 
   return (
     <div className="p-6 space-y-5">
@@ -53,6 +60,11 @@ export default function SaidasPage() {
         </h1>
         <div className="text-sm text-slate-500 mt-1">
           Total: <span className="font-semibold text-slate-900">{formatBRL(total)}</span> em 4 bolsos
+          {bolsos && (
+            <span className="ml-2 text-xs text-slate-400">
+              · {bolsos.com_split_count} de {bolsos.transacoes_count} transações já com split
+            </span>
+          )}
         </div>
       </div>
 
@@ -61,33 +73,37 @@ export default function SaidasPage() {
           titulo="SPM operacional"
           cor="border-blue-700 bg-blue-50"
           descricao="Plantonistas, escritório, tributos SPM"
-          valor={total}
-          percent={100}
-          nota="Filtro ainda não aplicado — drill-down por bolso chega no Plano 03"
+          valor={bolsos?.spm_operacional ?? total}
+          percent={pct(bolsos?.spm_operacional ?? total)}
+          nota={
+            bolsos && bolsos.com_split_count < bolsos.transacoes_count
+              ? `Inclui ${bolsos.transacoes_count - bolsos.com_split_count} transações ainda não classificadas por split`
+              : undefined
+          }
         />
         <BolsoCard
           titulo="Via FD"
           cor="border-amber-600 bg-amber-50"
-          descricao="Linhas com empresa_pagadora=FD (Thais, Vinicius, CLTs Unai/Itaju/Pedra Bela…)"
-          valor={0}
-          percent={0}
-          nota="Valor populado após classificação pelo módulo de orçamento"
+          descricao="Linhas de transação com bolso=FD_VIA_SPM (Thais, Vinicius, CLTs Unai/Itaju/Pedra Bela…)"
+          valor={bolsos?.fd_via_spm ?? 0}
+          percent={pct(bolsos?.fd_via_spm ?? 0)}
+          nota="Popula conforme Hugo classifica splits ou edita orcamento_linha.empresa_pagadora=FD"
         />
         <BolsoCard
           titulo="Pessoal Hugo"
           cor="border-red-600 bg-red-50"
           descricao="Contas fixas, aluguéis, cartão metade. Contrapartida: mútuo SPM↔Hugo PF"
-          valor={0}
-          percent={0}
-          nota="Valor populado após split de fatura de cartão (Plano 03)"
+          valor={bolsos?.hugo_pessoal ?? 0}
+          percent={pct(bolsos?.hugo_pessoal ?? 0)}
+          nota="Popula conforme Hugo divide fatura de cartão em /transacoes/[id]/split"
         />
         <BolsoCard
           titulo="Investimento Hugo"
           cor="border-violet-600 bg-violet-50"
           descricao="Terrenos Albatroz, Paysage, Odir. Contrapartida: mútuo SPM↔Hugo PF"
-          valor={0}
-          percent={0}
-          nota="Valor populado após classificação pelo módulo de orçamento"
+          valor={bolsos?.investimento_hugo ?? 0}
+          percent={pct(bolsos?.investimento_hugo ?? 0)}
+          nota="Popula conforme Hugo classifica transações de compra/aporte em investimento"
         />
       </div>
 

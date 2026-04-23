@@ -1,24 +1,12 @@
-from typing import List, Optional
+from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
 
 from backend.api.deps import get_current_user, get_supabase_authed
 from backend.api.schemas.orcamento import (
-    OrcamentoCreate, OrcamentoOut, OrcamentoLinhaOut, ResultadoUploadOrcamento,
+    OrcamentoCreate, OrcamentoOut, OrcamentoLinhaOut, OrcamentoLinhaPatch, ResultadoUploadOrcamento,
 )
 from backend.src.persistencia_parsers import persistir_orcamento_xlsx
-
-
-class OrcamentoLinhaPatch(BaseModel):
-    """Campos mutaveis de uma linha de orcamento (PATCH parcial)."""
-    titular_razao_social: Optional[str] = None
-    titular_cpf_cnpj: Optional[str] = None
-    categoria_id: Optional[str] = None  # UUID string ou None para limpar
-    projeto_id: Optional[str] = None
-    valor_previsto: Optional[float] = None
-    data_previsao: Optional[str] = None  # YYYY-MM-DD ou None
-    observacao: Optional[str] = None
 
 
 router = APIRouter(prefix="/orcamentos", tags=["orcamento"])
@@ -132,7 +120,7 @@ def editar_linha(
     Campos ausentes no payload nao sao alterados. Para limpar um campo
     opcional (ex.: categoria_id), enviar explicitamente null.
     """
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude_unset=True, mode="json")
     if not updates:
         raise HTTPException(400, detail={"error": "Nada a atualizar"})
     client = get_supabase_authed(current["jwt"])

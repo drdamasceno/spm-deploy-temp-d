@@ -8,6 +8,7 @@ import type {
   HistoricoResponse,
   ReceitaFinanceiraResponse,
   RecebiveisResponse,
+  SaidasPorBolsoResponse,
 } from "@/types/v2"
 
 export interface FetchDashboardParams {
@@ -60,6 +61,16 @@ export async function fetchHistorico(
   const { data } = await apiClient.get<HistoricoResponse>(
     "/dashboard/historico",
     { params: { meses } }
+  )
+  return data
+}
+
+export async function fetchSaidasPorBolso(
+  competencia: string
+): Promise<SaidasPorBolsoResponse> {
+  const { data } = await apiClient.get<SaidasPorBolsoResponse>(
+    "/dashboard/saidas-por-bolso",
+    { params: { competencia } }
   )
   return data
 }

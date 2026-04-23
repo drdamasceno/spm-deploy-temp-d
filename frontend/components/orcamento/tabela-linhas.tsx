@@ -1,6 +1,7 @@
 "use client";
 import { memo } from "react";
 import type { OrcamentoLinhaOut, CategoriaOut, ProjetoOut } from "@/types/v2";
+import { BOLSO_LABELS, BOLSO_CORES } from "@/types/v2";
 import { formatBRL } from "@/lib/format";
 
 // Status derivado de valor_previsto vs soma de conciliacoes — nesta tela, por
@@ -34,6 +35,9 @@ function TabelaLinhasImpl({
           <tr>
             <th className="px-3 py-2 text-left font-semibold text-slate-600 uppercase">
               Razão Social / Descrição
+            </th>
+            <th className="px-3 py-2 text-left font-semibold text-slate-600 uppercase">
+              Bolso
             </th>
             <th className="px-3 py-2 text-left font-semibold text-slate-600 uppercase">
               Categoria
@@ -76,11 +80,32 @@ function TabelaLinhasImpl({
                 title={onRowClick ? "Clique para editar" : undefined}
               >
                 <td className="px-3 py-2 font-medium text-slate-900">
-                  {l.titular_razao_social}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>{l.titular_razao_social}</span>
+                    {l.empresa_pagadora_id && (
+                      <span
+                        className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800"
+                        title="Pago via FD (empresa pagadora distinta)"
+                      >
+                        FD
+                      </span>
+                    )}
+                  </div>
                   {l.titular_cpf_cnpj && (
                     <div className="text-[10px] text-slate-500">
                       {l.titular_cpf_cnpj}
                     </div>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  {l.bolso ? (
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${BOLSO_CORES[l.bolso]}`}
+                    >
+                      {BOLSO_LABELS[l.bolso]}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-[10px]">—</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-slate-700">

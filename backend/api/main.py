@@ -17,12 +17,14 @@ from backend.api.routers import (
     dashboard_evolucao,
     dashboard_historico,
     dashboard_receita_financeira,
+    dashboard_saidas_bolso,
     excecao_pj,
     extratos,
     orcamento,
     regra_classificacao,
     rodadas,
     saldos,
+    transacao_linha,
 )
 
 load_dotenv()
@@ -67,7 +69,9 @@ app.include_router(dashboard_evolucao.router)
 app.include_router(dashboard_compromissos_recebiveis.router)
 app.include_router(dashboard_receita_financeira.router)
 app.include_router(dashboard_historico.router)
+app.include_router(dashboard_saidas_bolso.router)
 app.include_router(saldos.router)
+app.include_router(transacao_linha.router)
 
 
 @app.get("/")

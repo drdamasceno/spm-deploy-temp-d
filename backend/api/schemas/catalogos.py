@@ -8,6 +8,8 @@ class EmpresaOut(BaseModel):
     razao_social: str
     cnpj: str | None = None
     ativa: bool
+    regime_tributario: str | None = None  # LUCRO_REAL / LUCRO_PRESUMIDO / SIMPLES_NACIONAL
+    papel: str | None = None  # PRINCIPAL / INTRAGRUPO
 
 
 class CategoriaOut(BaseModel):

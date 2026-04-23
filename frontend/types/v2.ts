@@ -51,6 +51,8 @@ export interface OrcamentoLinhaOut {
   valor_previsto: number;
   data_previsao: string | null;
   observacao: string | null;
+  bolso: BolsoTipo;
+  empresa_pagadora_id: string | null;
 }
 
 export interface ResultadoUploadOrcamento {
@@ -229,6 +231,50 @@ export interface HistoricoResponse {
   meses: MesHistorico[];
 }
 
+export interface SaidasPorBolsoResponse {
+  competencia: string;
+  total: number;
+  spm_operacional: number;
+  fd_via_spm: number;
+  hugo_pessoal: number;
+  investimento_hugo: number;
+  transacoes_count: number;
+  com_split_count: number;
+}
+
+// ─── Split de transação (Track B Plano 03) ─────────────────────────────────
+
+export type BolsoTipo2 = BolsoTipo  // alias para evitar redeclaração caso já exista
+
+export interface TransacaoLinha {
+  id: string;
+  transacao_bancaria_id: string;
+  valor: number;
+  bolso: BolsoTipo;
+  orcamento_linha_id: string | null;
+  empresa_pagadora_id: string | null;
+  descricao: string | null;
+  criado_em: string;
+  criado_por: string | null;
+}
+
+export interface SplitRequest {
+  linhas: Array<{
+    valor: number;
+    bolso: BolsoTipo;
+    orcamento_linha_id?: string | null;
+    empresa_pagadora_id?: string | null;
+    descricao?: string | null;
+  }>;
+}
+
+export interface SplitResponse {
+  transacao_bancaria_id: string;
+  valor_transacao: number;
+  valor_soma_linhas: number;
+  linhas: TransacaoLinha[];
+}
+
 // Contratos por cidade (Track C)
 export interface ContratoCidadeListItem {
   id: string
@@ -350,4 +396,29 @@ export interface SaldoManualInput {
   saldo_valor: number
   data_referencia: string
   observacao?: string | null
+}
+
+// ─── Bolsos / Empresa pagadora (Track B) ──────────────────────────────────
+
+export type BolsoTipo = "SPM_OPERACIONAL" | "FD_VIA_SPM" | "HUGO_PESSOAL" | "INVESTIMENTO_HUGO"
+
+export const BOLSO_LABELS: Record<BolsoTipo, string> = {
+  SPM_OPERACIONAL: "SPM operacional",
+  FD_VIA_SPM: "Via FD",
+  HUGO_PESSOAL: "Pessoal Hugo",
+  INVESTIMENTO_HUGO: "Investimento Hugo",
+}
+
+export const BOLSO_CORES: Record<BolsoTipo, string> = {
+  SPM_OPERACIONAL: "bg-slate-100 text-slate-700",
+  FD_VIA_SPM: "bg-amber-100 text-amber-800",
+  HUGO_PESSOAL: "bg-red-100 text-red-800",
+  INVESTIMENTO_HUGO: "bg-violet-100 text-violet-800",
+}
+
+export interface EmpresaGrupo {
+  id: string
+  codigo: string
+  razao_social: string
+  papel: "PRINCIPAL" | "INTRAGRUPO"
 }

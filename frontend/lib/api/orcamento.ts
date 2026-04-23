@@ -4,6 +4,7 @@ import type {
   OrcamentoOut,
   OrcamentoLinhaOut,
   ResultadoUploadOrcamento,
+  BolsoTipo,
 } from "@/types/v2"
 
 export interface ListarOrcamentosParams {
@@ -89,6 +90,8 @@ export type OrcamentoLinhaPatch = Partial<{
   valor_previsto: number
   data_previsao: string | null
   observacao: string | null
+  bolso: BolsoTipo
+  empresa_pagadora_id: string | null
 }>
 
 export async function editarOrcamentoLinha(
@@ -101,6 +104,9 @@ export async function editarOrcamentoLinha(
   )
   return data
 }
+
+// Alias explicito solicitado pelo plano 03: patchLinha(linhaId, body)
+export const patchLinha = editarOrcamentoLinha
 
 export async function deletarOrcamentoLinha(linha_id: string): Promise<void> {
   await apiClient.delete(`/orcamentos/linhas/${linha_id}`)

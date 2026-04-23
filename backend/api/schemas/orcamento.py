@@ -3,6 +3,8 @@ from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
+from backend.api.schemas.bolso import BolsoTipo
+
 
 class OrcamentoCreate(BaseModel):
     empresa_id: UUID
@@ -29,6 +31,25 @@ class OrcamentoLinhaOut(BaseModel):
     valor_previsto: float
     data_previsao: Optional[date]
     observacao: Optional[str]
+    bolso: BolsoTipo = BolsoTipo.SPM_OPERACIONAL
+    empresa_pagadora_id: Optional[UUID] = None
+
+
+class OrcamentoLinhaPatch(BaseModel):
+    """Campos mutaveis de uma linha de orcamento (PATCH parcial).
+
+    Campos ausentes no payload nao sao alterados. Para limpar um campo
+    opcional (ex.: categoria_id), enviar explicitamente null.
+    """
+    titular_razao_social: Optional[str] = None
+    titular_cpf_cnpj: Optional[str] = None
+    categoria_id: Optional[str] = None
+    projeto_id: Optional[str] = None
+    valor_previsto: Optional[float] = None
+    data_previsao: Optional[str] = None
+    observacao: Optional[str] = None
+    bolso: Optional[BolsoTipo] = None
+    empresa_pagadora_id: Optional[UUID] = None
 
 
 class ResultadoUploadOrcamento(BaseModel):
