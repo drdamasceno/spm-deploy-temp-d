@@ -282,6 +282,28 @@ export default function OrcamentoPage() {
       {orcamentoAtual ? (
         <>
           <TabsSecoes active={tab} contagens={contagens} onChange={setTab} />
+          {(tab === "DESPESA_PROFISSIONAIS" || tab === "FATURAMENTO") && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2 text-[12px] text-amber-900">
+              <span className="text-base leading-none mt-0.5">⏰</span>
+              <div className="flex-1">
+                <b className="font-semibold">
+                  Competência-base: {formatCompetenciaBR(competenciaAnterior(competencia))}
+                </b>{" "}
+                · orçamento <b>{formatCompetenciaBR(competencia)}</b> paga{" "}
+                {tab === "DESPESA_PROFISSIONAIS"
+                  ? "serviços prestados"
+                  : "faturamentos"}{" "}
+                no mês anterior.
+                <span className="block text-amber-700 mt-0.5 text-[11px]">
+                  Inclusões de meses anteriores a{" "}
+                  {formatCompetenciaBR(competenciaAnterior(competencia))} (atrasados)
+                  também compõem este orçamento — use o campo{" "}
+                  <i>observação</i> da linha para marcar a competência de referência
+                  até implementarmos o campo estrutural.
+                </span>
+              </div>
+            </div>
+          )}
           <div className="bg-slate-50 px-4 py-2 text-xs text-slate-600 border-b border-slate-200">
             Total previsto nesta seção:{" "}
             <b className="text-slate-900 tabular-nums">
@@ -337,6 +359,18 @@ function proximaCompetencia(c: string): string {
   const nextM = m === 12 ? 1 : m + 1;
   const nextY = m === 12 ? y + 1 : y;
   return `${nextY}-${String(nextM).padStart(2, "0")}`;
+}
+
+function competenciaAnterior(c: string): string {
+  const [y, m] = c.split("-").map(Number);
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevY = m === 1 ? y - 1 : y;
+  return `${prevY}-${String(prevM).padStart(2, "0")}`;
+}
+
+function formatCompetenciaBR(c: string): string {
+  const [y, m] = c.split("-");
+  return `${m}/${y}`;
 }
 
 function KpiMini({
