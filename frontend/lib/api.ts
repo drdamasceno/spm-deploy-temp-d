@@ -101,6 +101,10 @@ export async function conciliarRodada(rodadaId: string): Promise<ConciliarRespon
   return r.data
 }
 
+export async function deletarRodada(rodadaId: string): Promise<void> {
+  await api.delete(`/rodadas/${rodadaId}`)
+}
+
 export async function getResultado(
   rodadaId: string,
   page = 1,

@@ -1,11 +1,12 @@
 "use client"
 
 import { use, useEffect, useState } from "react"
-import { RefreshCw } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { RefreshCw, Trash2 } from "lucide-react"
 import { AxiosError } from "axios"
 import { toast } from "sonner"
 
-import { conciliarRodada, getResultado } from "@/lib/api"
+import { conciliarRodada, deletarRodada, getResultado } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -17,9 +18,11 @@ import type { ResultadoResponse } from "@/lib/types"
 
 export default function RodadaDetalhesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const router = useRouter()
   const [resultado, setResultado] = useState<ResultadoResponse | null>(null)
   const [page, setPage] = useState(1)
   const [reconciliando, setReconciliando] = useState(false)
+  const [deletando, setDeletando] = useState(false)
 
   async function load(p = page) {
     setResultado(null)
@@ -49,6 +52,23 @@ export default function RodadaDetalhesPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  async function excluir() {
+    if (!confirm(
+      `Excluir esta rodada e TODOS seus dados (transações + registros PP)? ` +
+      `Esta ação não pode ser desfeita. Você poderá subir uma nova rodada em seguida.`
+    )) return
+    setDeletando(true)
+    try {
+      await deletarRodada(id)
+      toast.success("Rodada excluída")
+      router.push("/rodadas")
+    } catch (err) {
+      const ax = err as AxiosError<{ error?: string }>
+      toast.error(ax.response?.data?.error || "Falha ao excluir")
+      setDeletando(false)
+    }
+  }
+
   return (
     <main className="mx-auto max-w-7xl w-full px-6 py-8 flex-1 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -56,10 +76,23 @@ export default function RodadaDetalhesPage({ params }: { params: Promise<{ id: s
           <h1 className="text-2xl font-semibold tracking-tight">Rodada</h1>
           <p className="text-xs text-muted-foreground mt-1 font-mono">{id}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={reprocessar} disabled={reconciliando}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${reconciliando ? "animate-spin" : ""}`} />
-          {reconciliando ? "Reprocessando..." : "Reprocessar"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={reprocessar} disabled={reconciliando || deletando}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${reconciliando ? "animate-spin" : ""}`} />
+            {reconciliando ? "Reprocessando..." : "Reprocessar"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={excluir}
+            disabled={reconciliando || deletando}
+            className="text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700"
+            title="Excluir rodada e seus dados (permite novo upload)"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {deletando ? "Excluindo..." : "Excluir rodada"}
+          </Button>
+        </div>
       </div>
 
       {/* Resumo principal */}

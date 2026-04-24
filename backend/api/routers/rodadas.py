@@ -774,6 +774,33 @@ def _aplicar_updates_em_batch(
         client.table("transacao_bancaria").update(update_payload).in_("id", ids).execute()
 
 
+@router.delete("/{rodada_id}", status_code=status.HTTP_204_NO_CONTENT)
+def deletar_rodada(
+    rodada_id: UUID,
+    current=Depends(get_current_user),
+):
+    """
+    DELETE /rodadas/{rodada_id}
+
+    Remove a rodada e todos os dados derivados (transacoes_bancaria e
+    registro_pp dessa rodada). Usa _rollback_rodada internamente.
+
+    Bloqueia rodadas VALIDADA (imutáveis — só CEO reverte).
+    """
+    client = get_supabase_authed(current["jwt"])
+    rid = str(rodada_id)
+    rodada = _load_rodada(client, rid)
+
+    if rodada.get("status") == "VALIDADA":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "rodada em status VALIDADA - imutavel (exceto CEO)"},
+        )
+
+    _rollback_rodada(client, rid)
+    return None
+
+
 @router.post("/{rodada_id}/conciliar", response_model=ConciliarResponse)
 def conciliar_rodada(
     rodada_id: UUID,
