@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useFilters } from "@/lib/filters-context"
 import {
   listarContratos,
@@ -85,9 +86,16 @@ export default function ContratosPage() {
               </thead>
               <tbody>
                 {fechadas.map((c) => (
-                  <tr key={`${c.competencia}-${c.contrato_id}`} className="border-b border-emerald-100 last:border-0">
+                  <tr key={`${c.competencia}-${c.contrato_id}`} className="border-b border-emerald-100 last:border-0 hover:bg-emerald-100/50">
                     <td className="py-1.5 font-mono">{formatCompetenciaCurta(c.competencia)}</td>
-                    <td className="py-1.5 font-medium">{c.uf} - {c.cidade}</td>
+                    <td className="py-1.5 font-medium">
+                      <Link
+                        href={`/contratos/${c.contrato_id}/${c.competencia}`}
+                        className="text-emerald-900 hover:underline"
+                      >
+                        {c.uf} - {c.cidade}
+                      </Link>
+                    </td>
                     <td className="py-1.5 text-right tabular-nums">{c.prestadores}</td>
                     <td className="py-1.5 text-right tabular-nums">{formatBRL(c.total_original)}</td>
                     <td className="py-1.5 text-right tabular-nums text-emerald-700">{formatBRL(c.total_pago)}</td>
