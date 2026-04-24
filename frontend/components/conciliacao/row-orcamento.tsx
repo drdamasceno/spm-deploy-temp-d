@@ -12,6 +12,7 @@ interface RowOrcamentoProps {
   origem?: OrigemSugestao;
   selecionada: boolean;
   onToggle: () => void;
+  concorrente?: { posicao: number; total: number } | null;
 }
 
 function corPorOrigem(origem?: OrigemSugestao): string {
@@ -43,6 +44,7 @@ export function RowOrcamento({
   origem,
   selecionada,
   onToggle,
+  concorrente,
 }: RowOrcamentoProps) {
   return (
     <div
@@ -63,6 +65,14 @@ export function RowOrcamento({
             <span className="font-medium">{empresaCodigo} ·</span>
           )}
           <span>{labelNatureza(natureza)}</span>
+          {concorrente && (
+            <span
+              className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-900"
+              title="Esta linha de orçamento aparece como sugestão para N transações — só uma pode ser aplicada"
+            >
+              ⚠ concorrente {concorrente.posicao}/{concorrente.total}
+            </span>
+          )}
         </div>
         <div className="font-medium text-slate-900 truncate">
           {titularRazao}

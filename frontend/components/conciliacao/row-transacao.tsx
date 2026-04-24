@@ -13,6 +13,8 @@ interface RowTransacaoProps {
   linhaAlvo?: string | null;
   selecionada: boolean;
   onToggle: () => void;
+  /** Se a mesma orcamento_linha tem 2+ sugestões concorrentes, posição e total. */
+  concorrente?: { posicao: number; total: number } | null;
 }
 
 function corPorOrigem(origem?: OrigemSugestao): string {
@@ -73,6 +75,7 @@ export function RowTransacao({
   linhaAlvo,
   selecionada,
   onToggle,
+  concorrente,
 }: RowTransacaoProps) {
   return (
     <div
@@ -92,6 +95,14 @@ export function RowTransacao({
           {tagBanco(origemBanco)}
           <span>{formatDate(data)}</span>
           {tagConfianca(origem, confianca)}
+          {concorrente && (
+            <span
+              className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-900"
+              title="Mesma linha de orçamento é sugerida para N transações — só uma pode vencer"
+            >
+              ⚠ concorrente {concorrente.posicao}/{concorrente.total}
+            </span>
+          )}
         </div>
         <div className="font-medium text-slate-900 truncate">
           {titular || <span className="italic text-slate-400">(sem titular)</span>}
