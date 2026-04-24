@@ -473,6 +473,19 @@ async def upload_rodada(
             client.table("registro_pp").insert(registro_rows).execute()
 
         # 7) Insere transacao_bancaria
+        # Alinhado com persistencia_parsers.persistir_extrato_bradesco:
+        # - origem_banco é NOT NULL (constraint de schema)
+        # - fitid usado pra dedup preventivo
+        # - natureza_lancamento vem do tipo classificado pelo parser
+        def _natureza(tipo: str) -> str:
+            if tipo == "PIX_ENTRADA":
+                return "PIX_CREDITO"
+            if tipo == "PIX_SAIDA":
+                return "PIX_DEBITO"
+            if tipo == "TARIFA_BANCARIA":
+                return "TARIFA_CONTA"
+            return "OUTRO"
+
         tx_rows = []
         for t in transacoes:
             valor = float(t.get("valor") or 0.0)
@@ -485,12 +498,29 @@ async def upload_rodada(
                 "mes_competencia": mes_placeholder,
                 "tipo": "CREDITO" if valor >= 0 else "DEBITO",
                 "status_conciliacao": "NAO_CLASSIFICADO",
-                "descricao": t.get("memo") or None,
+                "descricao": (t.get("memo") or "")[:500] or None,
                 "titular_pix": t.get("titular_pix") or None,
+                "origem_banco": "BRADESCO",
+                "natureza_lancamento": _natureza(t.get("tipo") or ""),
+                "fitid": (t.get("fitid") or "").strip() or None,
                 "rodada_id": rodada_id,
             })
         if tx_rows:
-            client.table("transacao_bancaria").insert(tx_rows).execute()
+            # Dedup preventivo: filtra fitids que já existem na mesma conta
+            fitids = [r["fitid"] for r in tx_rows if r.get("fitid")]
+            if fitids:
+                existentes = (
+                    client.table("transacao_bancaria")
+                    .select("fitid")
+                    .eq("conta_id", CONTA_BRADESCO_REMESSAS_ID)
+                    .in_("fitid", fitids)
+                    .execute()
+                    .data
+                ) or []
+                ja_existem = {e["fitid"] for e in existentes}
+                tx_rows = [r for r in tx_rows if not r.get("fitid") or r["fitid"] not in ja_existem]
+            if tx_rows:
+                client.table("transacao_bancaria").insert(tx_rows).execute()
 
         # 8) Atualiza pp_competencias
         client.table("rodada").update(
