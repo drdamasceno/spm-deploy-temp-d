@@ -700,55 +700,60 @@ def _reset_conciliacao_da_rodada(client: Client, rodada_id: str) -> None:
 
 def _computar_metricas_rodada(client: Client, rodada_id: str) -> dict:
     """
-    Calcula metricas de conciliacao da rodada no criterio aprovado por Hugo
-    (bate com o 93,5% da rodada manual de 13/04/2026):
+    Calcula % de conciliação como "fração do passivo PP que foi casada a PIX".
 
-        percentual = debitos_enderecados / valor_total_pp_elegivel
+    Numerador: soma de saldo_pp dos registros_pp ELEGIVEL cujo registro
+               resultou em MATCH_AUTOMATICO / FRACIONADO / CONCILIADO_CATEGORIA
+               (EXCECAO_PJ_PRESTADOR). MANUAL_PENDENTE e NAO_CLASSIFICADO
+               NÃO entram — não são pagamento confirmado.
 
-    Definicoes:
-      - debitos_enderecados = soma de |valor| de transacao_bancaria onde
-        rodada_id=X AND tipo='DEBITO'
-                  AND status_conciliacao != 'NAO_CLASSIFICADO'
-                  AND (categoria IS NULL OR categoria != 'TRANSFERENCIA_INTERNA')
-        TRANSFERENCIA_INTERNA e excluida porque representa movimento entre
-        contas da propria SPM (INVEST_FACIL, transf. SOCIEDADE PARANAENSE)
-        — nao e pagamento endereçado a fornecedor/prestador.
-      - valor_total_pp_elegivel = soma de saldo_pp de registro_pp onde
-        rodada_id=X e status_saldo='ELEGIVEL'
+    Denominador: soma total de saldo_pp dos registros_pp ELEGIVEL.
+
+    Tarifas, transferências internas, despesa operacional etc. não têm
+    registro_pp_id, logo não poluem o numerador.
 
     Retorno: {valor_total_pp_elegivel, debitos_enderecados, percentual}.
+    Nome da chave 'debitos_enderecados' preservado por compatibilidade
+    com consumers — valor semântico agora é "valor conciliado".
     """
-    tx_resp = (
-        client.table("transacao_bancaria")
-        .select("valor, tipo, status_conciliacao, categoria")
-        .eq("rodada_id", rodada_id)
-        .execute()
-    )
-    debitos_enderecados = 0.0
-    for t in tx_resp.data or []:
-        if (t.get("tipo") == "DEBITO"
-            and t.get("status_conciliacao") != "NAO_CLASSIFICADO"
-            and t.get("categoria") != "TRANSFERENCIA_INTERNA"):
-            debitos_enderecados += abs(float(t.get("valor") or 0.0))
-
     pp_resp = (
         client.table("registro_pp")
-        .select("saldo_pp, status_saldo")
+        .select("id, saldo_pp, status_saldo")
         .eq("rodada_id", rodada_id)
+        .eq("status_saldo", "ELEGIVEL")
         .execute()
     )
-    valor_total_pp_elegivel = 0.0
+    pp_por_id: Dict[str, float] = {}
     for r in pp_resp.data or []:
-        if r.get("status_saldo") == "ELEGIVEL":
-            valor_total_pp_elegivel += float(r.get("saldo_pp") or 0.0)
+        pp_por_id[r["id"]] = float(r.get("saldo_pp") or 0.0)
+    valor_total_pp_elegivel = sum(pp_por_id.values())
+
+    valor_conciliado = 0.0
+    if pp_por_id:
+        tx_resp = (
+            client.table("transacao_bancaria")
+            .select("registro_pp_id, status_conciliacao, categoria")
+            .eq("rodada_id", rodada_id)
+            .in_("registro_pp_id", list(pp_por_id.keys()))
+            .execute()
+        )
+        fechados: set = set()
+        for t in tx_resp.data or []:
+            st = t.get("status_conciliacao")
+            cat = t.get("categoria")
+            if st in ("MATCH_AUTOMATICO", "FRACIONADO"):
+                fechados.add(t["registro_pp_id"])
+            elif st == "CONCILIADO_CATEGORIA" and cat == "EXCECAO_PJ_PRESTADOR":
+                fechados.add(t["registro_pp_id"])
+        valor_conciliado = sum(pp_por_id[pp_id] for pp_id in fechados)
 
     percentual = (
-        debitos_enderecados / valor_total_pp_elegivel * 100.0
+        valor_conciliado / valor_total_pp_elegivel * 100.0
         if valor_total_pp_elegivel > 0 else 0.0
     )
     return {
         "valor_total_pp_elegivel": round(valor_total_pp_elegivel, 2),
-        "debitos_enderecados": round(debitos_enderecados, 2),
+        "debitos_enderecados": round(valor_conciliado, 2),
         "percentual": round(percentual, 2),
     }
 

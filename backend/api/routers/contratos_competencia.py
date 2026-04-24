@@ -203,6 +203,91 @@ def listar_anteriores(
     return out
 
 
+@router.get("/contratos/anteriores-fechadas", response_model=list[ContratoAnteriorItem])
+def listar_anteriores_fechadas(
+    ate: str,
+    current=Depends(get_current_user),
+):
+    """
+    Retorna contratos de competências < `ate` que foram **totalmente quitados**
+    (saldo_aberto ≈ 0, total_original > 0).
+
+    Simétrico a /contratos/anteriores (que retorna só os em aberto). Permite
+    a UI mostrar uma seção 'Competências Anteriores Fechadas' para Hugo
+    confirmar 'nada mais resta a pagar'.
+    """
+    if not _re.match(r"^\d{4}-\d{2}$", ate):
+        raise HTTPException(400, detail={"error": "ate deve estar no formato YYYY-MM"})
+
+    client = get_supabase_authed(current["jwt"])
+
+    rpps = (
+        client.table("registro_pp")
+        .select("id,contrato_id,saldo_pp,prestador_id,mes_competencia")
+        .lt("mes_competencia", ate)
+        .execute()
+        .data
+    )
+    if not rpps:
+        return []
+
+    contrato_ids = list({r["contrato_id"] for r in rpps if r.get("contrato_id")})
+    contratos = (
+        client.table("contrato").select("id,uf,cidade").in_("id", contrato_ids).execute().data
+        if contrato_ids else []
+    )
+    contrato_by_id = {c["id"]: c for c in contratos}
+
+    rpp_ids = [r["id"] for r in rpps]
+    txs = (
+        client.table("transacao_bancaria")
+        .select("registro_pp_id,valor").in_("registro_pp_id", rpp_ids).execute().data
+        if rpp_ids else []
+    )
+    pago_por_rpp: dict[str, float] = {}
+    for t in txs:
+        rid = t.get("registro_pp_id")
+        if rid:
+            pago_por_rpp[rid] = pago_por_rpp.get(rid, 0.0) + abs(float(t["valor"]))
+
+    agreg: dict[tuple, dict] = {}
+    for r in rpps:
+        cid = r.get("contrato_id")
+        if not cid or cid not in contrato_by_id:
+            continue
+        key = (cid, r["mes_competencia"])
+        a = agreg.setdefault(key, {
+            "total": 0.0, "total_pago": 0.0, "prestadores": set(),
+        })
+        a["total"] += float(r["saldo_pp"])
+        a["total_pago"] += pago_por_rpp.get(r["id"], 0.0)
+        a["prestadores"].add(r["prestador_id"])
+
+    today = date.today()
+    out: list[ContratoAnteriorItem] = []
+    for (cid, comp), a in agreg.items():
+        total = round(a["total"], 2)
+        pago = round(a["total_pago"], 2)
+        saldo = round(total - pago, 2)
+        # Filtro inverso: só quitados (saldo ~= 0) com total > 0
+        if saldo > 0.01:
+            continue
+        if total <= 0:
+            continue
+        y, m = map(int, comp.split("-"))
+        last_day = monthrange(y, m)[1]
+        ref = date(y, m, last_day)
+        idade = (today - ref).days
+        c = contrato_by_id[cid]
+        out.append(ContratoAnteriorItem(
+            contrato_id=cid, uf=c["uf"], cidade=c["cidade"], competencia=comp,
+            total_original=total, total_pago=pago, saldo_aberto=max(saldo, 0.0),
+            prestadores=len(a["prestadores"]), status="QUITADO", idade_dias=max(idade, 0),
+        ))
+    out.sort(key=lambda x: x.competencia, reverse=True)
+    return out
+
+
 @router.patch("/contratos/{contrato_id}", response_model=ContratoDadosExtras)
 def editar_dados_contrato(
     contrato_id: UUID,

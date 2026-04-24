@@ -4,6 +4,7 @@ import { useFilters } from "@/lib/filters-context"
 import {
   listarContratos,
   listarContratosAnteriores,
+  listarContratosAnterioresFechadas,
 } from "@/lib/api/contratos-competencia"
 import { TabelaCidade } from "@/components/contratos/tabela-cidade"
 import { CarryOverSection } from "@/components/contratos/carry-over-section"
@@ -15,6 +16,7 @@ export default function ContratosPage() {
   const { competencia } = useFilters()
   const [itens, setItens] = useState<ContratoCidadeListItem[]>([])
   const [anteriores, setAnteriores] = useState<ContratoAnteriorItem[]>([])
+  const [fechadas, setFechadas] = useState<ContratoAnteriorItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,11 +25,13 @@ export default function ContratosPage() {
     Promise.all([
       listarContratos({ competencia }),
       listarContratosAnteriores(competencia),
+      listarContratosAnterioresFechadas(competencia),
     ])
-      .then(([atuais, ant]) => {
+      .then(([atuais, ant, fec]) => {
         if (!cancelled) {
           setItens(atuais)
           setAnteriores(ant)
+          setFechadas(fec)
         }
       })
       .catch((e: unknown) => {
@@ -57,6 +61,48 @@ export default function ContratosPage() {
 
       <TabelaCidade itens={itens} competencia={competencia} />
       <CarryOverSection itens={anteriores} />
+
+      {fechadas.length > 0 && (
+        <details className="mx-5 mt-3 bg-emerald-50 rounded border border-emerald-200">
+          <summary className="px-3 py-2 cursor-pointer text-[13px] font-semibold text-emerald-800 hover:bg-emerald-100 flex items-center gap-2">
+            <span className="text-base leading-none">✓</span>
+            COMPETÊNCIAS ANTERIORES FECHADAS
+            <span className="text-emerald-600 font-normal text-xs">
+              · {fechadas.length} contrato(s) quitado(s) · {formatBRL(fechadas.reduce((s, i) => s + i.total_original, 0))}
+            </span>
+          </summary>
+          <div className="px-3 pb-3 pt-2">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wide text-emerald-700 border-b border-emerald-200">
+                  <th className="text-left py-1.5">COMPET.</th>
+                  <th className="text-left py-1.5">CONTRATO</th>
+                  <th className="text-right py-1.5">PREST.</th>
+                  <th className="text-right py-1.5">TOTAL</th>
+                  <th className="text-right py-1.5">PAGO</th>
+                  <th className="text-right py-1.5">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fechadas.map((c) => (
+                  <tr key={`${c.competencia}-${c.contrato_id}`} className="border-b border-emerald-100 last:border-0">
+                    <td className="py-1.5 font-mono">{formatCompetenciaCurta(c.competencia)}</td>
+                    <td className="py-1.5 font-medium">{c.uf} - {c.cidade}</td>
+                    <td className="py-1.5 text-right tabular-nums">{c.prestadores}</td>
+                    <td className="py-1.5 text-right tabular-nums">{formatBRL(c.total_original)}</td>
+                    <td className="py-1.5 text-right tabular-nums text-emerald-700">{formatBRL(c.total_pago)}</td>
+                    <td className="py-1.5 text-right">
+                      <span className="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-emerald-200 text-emerald-900">
+                        Quitado
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center gap-3 text-sm">
         <span className="text-slate-400 uppercase text-[11px] tracking-wide">Total em aberto</span>
