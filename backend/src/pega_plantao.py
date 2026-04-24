@@ -239,10 +239,12 @@ def parse_relatorio(source: Union[str, Path, bytes, BytesIO]) -> List[Dict[str, 
             break
 
         # === Linhas D+: dados de plantão ===
-        # Um bloco pode ter múltiplos contratos (Local diferentes)
-        # Cada "Total" finaliza um sub-bloco de contrato
-        contratos: Dict[str, Dict] = {}  # contrato -> {saldo, mes}
-        ultimo_contrato_visto: Optional[str] = None
+        # REGRA (CLAUDE.md regra 1): 1 arquivo PP = 1 contrato = 1 remessa por prestador.
+        # A coluna "Local" indica unidade/setor dentro do MESMO contrato — NUNCA fragmentar.
+        # Emitir sempre 1 registro por prestador com saldo = linha Total.
+        locais_visitados: list = []          # locais distintos na ordem de aparição
+        saldo_acumulado_total: float = 0.0   # fallback se Total não tiver cache
+        mes_bloco: str = ""                  # primeiro mês detectado no bloco
 
         while i < len(rows):
             v = _row_values(rows[i])
@@ -252,58 +254,101 @@ def parse_relatorio(source: Union[str, Path, bytes, BytesIO]) -> List[Dict[str, 
                 break  # Fim do bloco deste prestador
 
             if _is_total_row(v):
-                saldo = _to_float(v[COL_SALDO]) if len(v) > COL_SALDO else None
-                if contratos:
-                    ultimo_contrato = list(contratos.keys())[-1]
-                    # Fórmula Excel sem cache calculado retorna None — usar soma acumulada
-                    if saldo is not None:
-                        contratos[ultimo_contrato]["saldo"] = saldo
-                    elif "saldo_acumulado" in contratos[ultimo_contrato]:
-                        contratos[ultimo_contrato]["saldo"] = contratos[ultimo_contrato]["saldo_acumulado"]
+                saldo_total = _to_float(v[COL_SALDO]) if len(v) > COL_SALDO else None
+                # Fórmula Excel sem cache retorna None — usar soma acumulada como fallback
+                saldo_final = saldo_total if (saldo_total is not None and saldo_total != 0.0) \
+                    else saldo_acumulado_total
 
-                # Salvar registros dos contratos acumulados
-                for contrato, info in contratos.items():
-                    record = {
-                        "nome_prestador": cabecalho["nome_prestador"],
-                        "crm": cabecalho["crm"],
-                        "uf": cabecalho["uf"],
-                        "contrato": contrato,
-                        "mes_competencia": info.get("mes", ""),
-                        "saldo": info.get("saldo", 0.0) or 0.0,
-                        "tipo_doc": pix_info["tipo_doc"],
-                        "razao_social_pj": pix_info["razao_social_pj"],
-                        "chave_pix": pix_info["chave_pix"],
-                        "documento": pix_info["documento"],
-                    }
-                    results.append(record)
-                    logger.debug(f"  Registro: {record['nome_prestador']} | {contrato} | saldo={record['saldo']:.2f}")
+                # Constrói string do contrato preservando prefixo "UF - CIDADE - "
+                # e concatenando apenas os sub-locais quando há múltiplos locais distintos.
+                locais_unicos = list(dict.fromkeys(locais_visitados))
+                if not locais_unicos:
+                    contrato_str = ""
+                elif len(locais_unicos) == 1:
+                    contrato_str = locais_unicos[0]
+                else:
+                    # Tenta extrair prefixo "UF - CIDADE" comum a todos os locais
+                    # para produzir "UF - CIDADE - SUB_A + SUB_B" (compatível com _parse_local_pp)
+                    parts_primeiro = [p.strip() for p in locais_unicos[0].replace('–', '-').split(' - ')]
+                    if len(parts_primeiro) >= 2:
+                        prefixo = f"{parts_primeiro[0]} - {parts_primeiro[1]}"
+                        # Verifica se todos os locais compartilham o mesmo prefixo UF/CIDADE
+                        todos_mesma_cidade = all(
+                            loc.replace('–', '-').startswith(prefixo)
+                            for loc in locais_unicos
+                        )
+                        if todos_mesma_cidade:
+                            # Extrai sub-local de cada um (tudo após "UF - CIDADE - ")
+                            sub_locais = []
+                            prefixo_com_sep = prefixo + ' - '
+                            for loc in locais_unicos:
+                                loc_norm = loc.replace('–', '-')
+                                if loc_norm.startswith(prefixo_com_sep):
+                                    sub_locais.append(loc_norm[len(prefixo_com_sep):])
+                                else:
+                                    sub_locais.append(loc_norm[len(prefixo):].lstrip(' -'))
+                            if len(sub_locais) <= 3:
+                                contrato_str = prefixo + ' - ' + ' + '.join(sub_locais)
+                            else:
+                                contrato_str = prefixo + ' - ' + sub_locais[0] + f' + {len(sub_locais)-1} outros'
+                        else:
+                            # UF/cidades diferentes (não deveria ocorrer, mas defensivo)
+                            contrato_str = locais_unicos[0]
+                    else:
+                        # Formato inesperado — concatena inteiros
+                        if len(locais_unicos) <= 3:
+                            contrato_str = ' + '.join(locais_unicos)
+                        else:
+                            contrato_str = locais_unicos[0] + f' + {len(locais_unicos)-1} outros'
 
-                contratos = {}
-                ultimo_contrato_visto = None
+                record = {
+                    "nome_prestador": cabecalho["nome_prestador"],
+                    "crm": cabecalho["crm"],
+                    "uf": cabecalho["uf"],
+                    "contrato": contrato_str,
+                    "mes_competencia": mes_bloco,
+                    "saldo": saldo_final,
+                    "tipo_doc": pix_info["tipo_doc"],
+                    "razao_social_pj": pix_info["razao_social_pj"],
+                    "chave_pix": pix_info["chave_pix"],
+                    "documento": pix_info["documento"],
+                }
+                results.append(record)
+                logger.debug(
+                    f"  Registro: {record['nome_prestador']} | {contrato_str} "
+                    f"| locais={len(locais_unicos)} | saldo={saldo_final:.2f}"
+                )
+
+                # Reset para próximo bloco (pode haver novo cabeçalho de colunas)
+                locais_visitados = []
+                saldo_acumulado_total = 0.0
+                mes_bloco = ""
                 i += 1
 
-                # Após Total, pode vir novo cabeçalho de colunas (próximo contrato) ou linha vazia
+                # Após Total, pode vir novo cabeçalho de colunas ou linha vazia
                 continue
 
-            # Linha de plantão normal: registra contrato e atualiza contexto
-            if len(v) > COL_LOCAL and v[COL_DATA] is not None:
-                contrato = str(v[COL_LOCAL]).strip() if len(v) > COL_LOCAL and v[COL_LOCAL] else ""
-                if contrato:
-                    if contrato not in contratos:
-                        mes = _to_mes_competencia(v[COL_DATA])
-                        contratos[contrato] = {"saldo": 0.0, "mes": mes, "saldo_acumulado": 0.0}
-                    ultimo_contrato_visto = contrato
-            elif _is_header_cols_row(v):
-                # Novo cabeçalho de colunas dentro do mesmo prestador (múltiplos contratos)
-                pass
+            if _is_header_cols_row(v):
+                # Cabeçalho de colunas dentro do bloco (ignorar)
+                i += 1
+                continue
 
-            # Acumula coluna H de QUALQUER linha do bloco com valor numérico —
+            # Linha de plantão ou taxa: registra local e acumula saldo
+            if len(v) > COL_LOCAL and v[COL_DATA] is not None:
+                local_str = str(v[COL_LOCAL]).strip() if v[COL_LOCAL] else ""
+                if local_str and local_str not in locais_visitados:
+                    locais_visitados.append(local_str)
+                # Captura mês da primeira data válida do bloco
+                if not mes_bloco:
+                    mes_bloco = _to_mes_competencia(v[COL_DATA])
+
+            # Acumula coluna H (Saldo) de QUALQUER linha numérica —
             # cobre plantões (positivos) e taxas SPM (negativas, sem data em col 0).
             # Fallback usado quando a fórmula =SUM da linha Total vem sem cache.
-            if ultimo_contrato_visto and ultimo_contrato_visto in contratos and len(v) > COL_SALDO:
+            if len(v) > COL_SALDO:
                 val_h = _to_float(v[COL_SALDO])
                 if val_h is not None:
-                    contratos[ultimo_contrato_visto]["saldo_acumulado"] += val_h
+                    saldo_acumulado_total += val_h
 
             i += 1
 
