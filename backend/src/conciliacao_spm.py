@@ -112,6 +112,28 @@ except ImportError:
     _HAS_RAPIDFUZZ = False
 
 
+def _razao_bate(razao_pp: str, titular_pix: str) -> bool:
+    """
+    Match para razão social PJ. SÓ usa camadas 1-2 (exato + substring).
+
+    Por que não fuzzy? Razões sociais do Pega Plantão compartilham tokens
+    genéricos ("SERVICOS MEDICOS LTDA", "MEDICINA LTDA") que disparam
+    rapidfuzz.partial_ratio >= 85 entre PJs não relacionadas. Match válido
+    exige titular PIX = razão social cadastrada (CLAUDE.md regra 3).
+    Truncamento do memo Bradesco em 21 chars é coberto por substring —
+    não precisa de fuzzy.
+    """
+    a = _normalizar_nome(razao_pp)
+    b = _normalizar_nome(titular_pix)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a in b or b in a:
+        return True
+    return False
+
+
 def _nomes_batem(nome_pp: str, titular_pix: str) -> bool:
     """
     Match robusto entre nome do prestador (PP) e titular do PIX (extrato).
@@ -273,20 +295,35 @@ def conciliar(
     # Marcar todas transações: usadas no match ou não
     pix_usados: set = set()  # fitids já matchados
 
-    registros = []
+    # --- helper: construir candidatos de um prestador sobre PIX disponíveis ---
+    def _construir_candidatos(pp: dict) -> List[dict]:
+        nome_pp_local = _normalizar_nome(pp['nome_prestador'])
+        razao_pj_local = _normalizar_nome(pp.get('razao_social_pj', ''))
+        cands = []
+        for pix in pix_saidas:
+            if pix['fitid'] in pix_usados:
+                continue
+            titular = _normalizar_nome(pix.get('titular_pix', ''))
+            if not titular:
+                continue
+            match_direto = _nomes_batem(nome_pp_local, titular)
+            match_pj = bool(razao_pj_local) and _razao_bate(razao_pj_local, titular)
+            match_excecao = False
+            for exc_razao, exc_nome in excecoes_norm.items():
+                if _razao_bate(exc_razao, titular) and _nomes_batem(exc_nome, nome_pp_local):
+                    match_excecao = True
+                    break
+            if match_direto or match_pj or match_excecao:
+                cands.append({**pix, '_match_excecao': match_excecao,
+                              '_valor_abs': abs(pix['valor'])})
+        return cands
 
-    for pp in pp_data:
-        nome_pp = _normalizar_nome(pp['nome_prestador'])
-        razao_pj = _normalizar_nome(pp.get('razao_social_pj', ''))
-        saldo_pp = float(pp.get('saldo', 0.0))
-        contrato = pp.get('contrato', '')
-        mes = pp.get('mes_competencia', '')
-
-        registro = {
+    def _stub(pp: dict) -> dict:
+        return {
             "nome_prestador": pp['nome_prestador'],
-            "contrato": contrato,
-            "mes_competencia": mes,
-            "saldo_pp": saldo_pp,
+            "contrato": pp.get('contrato', ''),
+            "mes_competencia": pp.get('mes_competencia', ''),
+            "saldo_pp": float(pp.get('saldo', 0.0)),
             "tipo_doc": pp.get('tipo_doc', ''),
             "chave_pix": pp.get('chave_pix', ''),
             "documento": pp.get('documento', ''),
@@ -294,121 +331,105 @@ def conciliar(
             "categoria": "",
             "pix_matched": [],
             "valor_pix_total": 0.0,
-            "divergencia": saldo_pp,
+            "divergencia": float(pp.get('saldo', 0.0)),
         }
 
-        if saldo_pp < 0.0:
-            # Anomalia do PP: taxa SPM sem plantão positivo, estorno, etc.
-            # Não é pendência de pagamento — é dado a auditar.
-            registro["status"] = "SALDO_NEGATIVO"
-            registro["categoria"] = "SALDO_NEGATIVO"
-            registro["divergencia"] = 0.0
-            registros.append(registro)
+    # Inicializa stub por prestador (preserva ordem de pp_data no retorno).
+    registros = [_stub(pp) for pp in pp_data]
+
+    # Pré-classifica SEM_MOVIMENTO e SALDO_NEGATIVO (não competem por PIX).
+    pendentes_indices: List[int] = []
+    for i, pp in enumerate(pp_data):
+        saldo = float(pp.get('saldo', 0.0))
+        if saldo < 0.0:
+            registros[i]["status"] = "SALDO_NEGATIVO"
+            registros[i]["categoria"] = "SALDO_NEGATIVO"
+            registros[i]["divergencia"] = 0.0
+        elif saldo == 0.0:
+            registros[i]["status"] = "SEM_MOVIMENTO"
+            registros[i]["categoria"] = "SEM_MOVIMENTO"
+            registros[i]["divergencia"] = 0.0
+        else:
+            pendentes_indices.append(i)
+
+    # --- PASSADA 1a: MATCH_AUTOMATICO / CONCILIADO_CATEGORIA (valor exato) ---
+    for i in pendentes_indices[:]:
+        pp = pp_data[i]
+        saldo_pp = float(pp.get('saldo', 0.0))
+        cands = _construir_candidatos(pp)
+        if not cands:
             continue
-
-        if saldo_pp == 0.0:
-            registro["status"] = "SEM_MOVIMENTO"
-            registro["categoria"] = "SEM_MOVIMENTO"
-            registro["divergencia"] = 0.0
-            registros.append(registro)
-            continue
-
-        # Candidatos: PIX de saída não usados cujo titular coincide com prestador
-        candidatos = []
-        for pix in pix_saidas:
-            if pix['fitid'] in pix_usados:
-                continue
-            titular = _normalizar_nome(pix.get('titular_pix', ''))
-            if not titular:
-                continue
-            # Match por nome_prestador ou razao_social_pj
-            match_direto = _nomes_coincidem(titular, nome_pp)
-            match_pj = razao_pj and _nomes_coincidem(titular, razao_pj)
-            # Match por exceção PJ
-            match_excecao = False
-            for exc_razao, exc_nome in excecoes_norm.items():
-                if _nomes_coincidem(titular, exc_razao) and _nomes_coincidem(exc_nome, nome_pp):
-                    match_excecao = True
-                    break
-
-            if match_direto or match_pj or match_excecao:
-                candidatos.append({
-                    **pix,
-                    '_match_excecao': match_excecao,
-                    '_valor_abs': abs(pix['valor'])
-                })
-
-        if not candidatos:
-            # Nenhum candidato por nome — verificar se há PIX no período com valor exato
-            # (mas sem match de titular — reportar como MANUAL_PENDENTE se valor bate)
-            for pix in pix_saidas:
-                if pix['fitid'] in pix_usados:
-                    continue
-                if _valores_coincidem(abs(pix['valor']), saldo_pp):
-                    registro["status"] = "MANUAL_PENDENTE"
-                    registro["categoria"] = "VALOR_SEM_TITULAR"
-                    registro["pix_matched"] = [pix]
-                    registro["valor_pix_total"] = abs(pix['valor'])
-                    registro["divergencia"] = saldo_pp - abs(pix['valor'])
-                    break
-            else:
-                registro["status"] = "NAO_CLASSIFICADO"
-
-            registros.append(registro)
-            continue
-
-        # 1. MATCH_AUTOMATICO: um PIX com valor exato
-        for cand in candidatos:
+        for cand in cands:
             if _valores_coincidem(cand['_valor_abs'], saldo_pp):
                 pix_usados.add(cand['fitid'])
-                registro["status"] = "CONCILIADO_CATEGORIA" if cand['_match_excecao'] else "MATCH_AUTOMATICO"
-                registro["categoria"] = "EXCECAO_PJ_PRESTADOR" if cand['_match_excecao'] else ""
-                registro["pix_matched"] = [cand]
-                registro["valor_pix_total"] = cand['_valor_abs']
-                registro["divergencia"] = 0.0
+                registros[i]["status"] = (
+                    "CONCILIADO_CATEGORIA" if cand['_match_excecao']
+                    else "MATCH_AUTOMATICO"
+                )
+                registros[i]["categoria"] = (
+                    "EXCECAO_PJ_PRESTADOR" if cand['_match_excecao'] else ""
+                )
+                registros[i]["pix_matched"] = [cand]
+                registros[i]["valor_pix_total"] = cand['_valor_abs']
+                registros[i]["divergencia"] = 0.0
+                pendentes_indices.remove(i)
                 break
 
-        if registro["status"] in ("MATCH_AUTOMATICO", "CONCILIADO_CATEGORIA"):
-            registros.append(registro)
+    # --- PASSADA 1b: FRACIONADO (soma de candidatos == saldo) ---
+    from itertools import combinations
+    for i in pendentes_indices[:]:
+        pp = pp_data[i]
+        saldo_pp = float(pp.get('saldo', 0.0))
+        cands = _construir_candidatos(pp)
+        if len(cands) < 2:
             continue
-
-        # 2. FRACIONADO: soma de múltiplos PIX == saldo_pp
-        # Tentar combinações de até 5 PIX
-        from itertools import combinations
         matched_frac = None
-        for r in range(2, min(6, len(candidatos) + 1)):
-            for combo in combinations(candidatos, r):
+        for r in range(2, min(6, len(cands) + 1)):
+            for combo in combinations(cands, r):
                 soma = sum(c['_valor_abs'] for c in combo)
                 if _valores_coincidem(soma, saldo_pp):
                     matched_frac = list(combo)
                     break
             if matched_frac:
                 break
-
         if matched_frac:
             for c in matched_frac:
                 pix_usados.add(c['fitid'])
-            registro["status"] = "FRACIONADO"
-            registro["categoria"] = ""
-            registro["pix_matched"] = matched_frac
-            registro["valor_pix_total"] = sum(c['_valor_abs'] for c in matched_frac)
-            registro["divergencia"] = saldo_pp - registro["valor_pix_total"]
-            registros.append(registro)
-            continue
+            registros[i]["status"] = "FRACIONADO"
+            registros[i]["pix_matched"] = matched_frac
+            registros[i]["valor_pix_total"] = sum(c['_valor_abs'] for c in matched_frac)
+            registros[i]["divergencia"] = saldo_pp - registros[i]["valor_pix_total"]
+            pendentes_indices.remove(i)
 
-        # 3. MANUAL_PENDENTE: tem candidatos por nome mas valor diverge
-        #    Todos os candidatos do mesmo prestador entram — motor nao pode
-        #    decidir entre eles. Hugo revisa na UI (Passo 5). Evita que PIX
-        #    do mesmo prestador caia em NAO_CLASSIFICADO.
-        for cand in candidatos:
-            pix_usados.add(cand['fitid'])
-        registro["status"] = "MANUAL_PENDENTE"
-        registro["categoria"] = ""
-        registro["pix_matched"] = list(candidatos)
-        registro["valor_pix_total"] = sum(c['_valor_abs'] for c in candidatos)
-        registro["divergencia"] = saldo_pp - registro["valor_pix_total"]
-
-        registros.append(registro)
+    # --- PASSADA 2: MANUAL_PENDENTE / NAO_CLASSIFICADO (consumo conservador) ---
+    for i in pendentes_indices:
+        pp = pp_data[i]
+        saldo_pp = float(pp.get('saldo', 0.0))
+        cands = _construir_candidatos(pp)
+        if cands:
+            # MANUAL_PENDENTE: escolhe PIX vencedor (maior |valor|) e consome
+            # só esse. Demais candidatos continuam disponíveis para outros
+            # prestadores que possam tê-los como match legítimo.
+            vencedor = max(cands, key=lambda c: c['_valor_abs'])
+            pix_usados.add(vencedor['fitid'])
+            registros[i]["status"] = "MANUAL_PENDENTE"
+            registros[i]["pix_matched"] = [vencedor]
+            registros[i]["valor_pix_total"] = vencedor['_valor_abs']
+            registros[i]["divergencia"] = saldo_pp - vencedor['_valor_abs']
+        else:
+            # Sem candidato por titular — tenta VALOR_SEM_TITULAR (match só por valor)
+            for pix in pix_saidas:
+                if pix['fitid'] in pix_usados:
+                    continue
+                if _valores_coincidem(abs(pix['valor']), saldo_pp):
+                    pix_usados.add(pix['fitid'])
+                    registros[i]["status"] = "MANUAL_PENDENTE"
+                    registros[i]["categoria"] = "VALOR_SEM_TITULAR"
+                    registros[i]["pix_matched"] = [pix]
+                    registros[i]["valor_pix_total"] = abs(pix['valor'])
+                    registros[i]["divergencia"] = saldo_pp - abs(pix['valor'])
+                    break
+            # se nenhum, stub já está NAO_CLASSIFICADO (default)
 
     # Transações do extrato com categoria (PIX nao usados em match PP).
     # Ordem de prioridade (conforme spec do Passo 3 Bloco C + auditoria 2026-04-19):
