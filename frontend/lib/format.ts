@@ -42,3 +42,8 @@ export function formatDateTime(iso: string): string {
 export function formatPeriodo(inicio: string, fim: string): string {
   return `${formatDate(inicio)} — ${formatDate(fim)}`
 }
+
+export function formatDataBR(iso: string): string {
+  const [y, m, d] = iso.split("-")
+  return `${d}/${m}/${y.slice(2)}`
+}

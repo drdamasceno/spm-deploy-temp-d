@@ -1,7 +1,7 @@
 "use client"
 import { useState, Fragment } from "react"
 import type { ContratoAnteriorItem } from "@/types/v2"
-import { formatBRL } from "@/lib/format"
+import { formatBRL, formatDataBR } from "@/lib/format"
 import Link from "next/link"
 
 interface Props {
@@ -76,6 +76,7 @@ export function CarryOverSection({ itens }: Props) {
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Pago</th>
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Saldo aberto</th>
                 <th className="px-3.5 py-2 text-center text-[10px] uppercase text-indigo-900">Status</th>
+                <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Data Pag.</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
@@ -90,7 +91,7 @@ export function CarryOverSection({ itens }: Props) {
                       style={isDestaque
                         ? { background: `linear-gradient(90deg,${style.bgFrom} 0%,${style.bgTo} 100%)`, borderTop: `${dias >= 90 ? 3 : 2}px solid ${style.border}` }
                         : { background: "#e0e7ff" }}>
-                      <td colSpan={7} className={`${isDestaque ? "py-2.5" : "py-1.5"} px-3.5 font-bold`}
+                      <td colSpan={8} className={`${isDestaque ? "py-2.5" : "py-1.5"} px-3.5 font-bold`}
                         style={{ color: style.text, fontSize: isDestaque ? 13 : 12 }}>
                         {style.icon && <span className="mr-1.5" style={{ fontSize: dias >= 90 ? 16 : 14 }}>{style.icon}</span>}
                         {formatCompetenciaCurta(comp)} ·
@@ -119,6 +120,9 @@ export function CarryOverSection({ itens }: Props) {
                             {it.status[0] + it.status.slice(1).toLowerCase()}
                           </span>
                         </td>
+                        <td className="px-3.5 py-2 text-right text-slate-600 tabular-nums text-xs">
+                          {it.data_pagamento ? formatDataBR(it.data_pagamento) : "—"}
+                        </td>
                       </tr>
                     ))}
                   </Fragment>
@@ -127,6 +131,7 @@ export function CarryOverSection({ itens }: Props) {
               <tr className="border-t-2 border-indigo-300 bg-indigo-100 font-bold">
                 <td colSpan={5} className="px-3.5 py-2.5 text-indigo-900">Total em aberto (residual)</td>
                 <td className="px-3.5 py-2.5 text-right text-indigo-700 tabular-nums">{formatBRL(totalSaldo)}</td>
+                <td></td>
                 <td></td>
               </tr>
             </tbody>

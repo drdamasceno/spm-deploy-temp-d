@@ -16,27 +16,35 @@ router = APIRouter(tags=["dashboard"])
 
 @router.get("/dashboard/compromissos", response_model=CompromissosResponse)
 def compromissos(current=Depends(get_current_user)):
-    """Agrega compromissos a pagar: saldos de PP elegíveis + faturas previstas (30 dias).
+    """Agrega compromissos a pagar: saldos de PP elegiveis + faturas previstas (30 dias).
 
-    Fontes:
-      1. registro_pp com status_saldo='ELEGIVEL' (PP aguardando pagamento)
-      2. orcamento_linha com data_previsao <= hoje+30d sem conciliacao (FATURA futura)
+    PP: aplica filtro por rodada mais recente (por chave contrato/comp/prestador)
+    para nao somar registros duplicados quando PP foi re-importado.
     """
+    from backend.api.routers.contratos_competencia import (
+        _created_at_por_rodada,
+        _filtrar_pela_rodada_mais_recente,
+    )
+
     client = get_supabase_authed(current["jwt"])
 
     itens: list[CompromissoItem] = []
     soma_pp = 0.0
     soma_faturas = 0.0
 
-    # 1. PP elegível (saldo em aberto aguardando pagamento)
     pp_rows = (
         client.table("registro_pp")
-        .select("nome_prestador,saldo_pp")
+        .select("id,nome_prestador,saldo_pp,contrato_id,mes_competencia,prestador_id,rodada_id")
         .eq("status_saldo", "ELEGIVEL")
         .execute()
         .data
         or []
     )
+    if pp_rows:
+        rodada_ids = list({r["rodada_id"] for r in pp_rows if r.get("rodada_id")})
+        created_at_lookup = _created_at_por_rodada(client, rodada_ids)
+        pp_rows = _filtrar_pela_rodada_mais_recente(pp_rows, created_at_lookup)
+
     for r in pp_rows:
         valor = float(r.get("saldo_pp") or 0)
         if valor <= 0:
@@ -49,7 +57,6 @@ def compromissos(current=Depends(get_current_user)):
             vencimento=None,
         ))
 
-    # 2. Faturas previstas nos próximos 30 dias, sem conciliação
     hoje = date.today()
     limite = (hoje + timedelta(days=30)).isoformat()
     linhas = (

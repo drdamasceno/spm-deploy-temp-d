@@ -1,6 +1,6 @@
 "use client"
 import type { ContratoCidadeListItem } from "@/types/v2"
-import { formatBRL } from "@/lib/format"
+import { formatBRL, formatDataBR } from "@/lib/format"
 import Link from "next/link"
 
 interface Props {
@@ -34,6 +34,7 @@ export function TabelaCidade({ itens, competencia }: Props) {
             <th className="px-3.5 py-2.5 text-right text-[11px] uppercase text-slate-600 font-semibold">Pago</th>
             <th className="px-3.5 py-2.5 text-right text-[11px] uppercase text-slate-600 font-semibold">Saldo</th>
             <th className="px-3.5 py-2.5 text-center text-[11px] uppercase text-slate-600 font-semibold">Status</th>
+            <th className="px-3.5 py-2.5 text-right text-[11px] uppercase text-slate-600 font-semibold">Data Pag.</th>
           </tr>
         </thead>
         <tbody className="tabular-nums">
@@ -53,6 +54,9 @@ export function TabelaCidade({ itens, competencia }: Props) {
                   {it.status[0] + it.status.slice(1).toLowerCase()}
                 </span>
               </td>
+              <td className="px-3.5 py-2.5 text-right text-slate-600 tabular-nums text-xs">
+                {it.data_pagamento ? formatDataBR(it.data_pagamento) : "—"}
+              </td>
             </tr>
           ))}
           <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold">
@@ -61,6 +65,7 @@ export function TabelaCidade({ itens, competencia }: Props) {
             <td className="px-3.5 py-3 text-right">{formatBRL(itens.reduce((s, i) => s + i.total, 0))}</td>
             <td className="px-3.5 py-3 text-right">{formatBRL(itens.reduce((s, i) => s + i.total_pago, 0))}</td>
             <td className="px-3.5 py-3 text-right text-red-900">{formatBRL(totalGeral)}</td>
+            <td></td>
             <td></td>
           </tr>
         </tbody>

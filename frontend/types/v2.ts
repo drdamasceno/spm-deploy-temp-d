@@ -287,6 +287,7 @@ export interface ContratoCidadeListItem {
   saldo: number
   prestadores: number
   status: "PAGO" | "PARCIAL" | "PENDENTE"
+  data_pagamento: string | null  // ISO date 'YYYY-MM-DD' ou null
 }
 
 export interface ContratoAnteriorItem {
@@ -300,6 +301,7 @@ export interface ContratoAnteriorItem {
   prestadores: number
   status: "PAGO" | "PARCIAL" | "PENDENTE"
   idade_dias: number
+  data_pagamento: string | null  // ISO date 'YYYY-MM-DD' ou null
 }
 
 export interface PrestadorLinhaDetalhe {

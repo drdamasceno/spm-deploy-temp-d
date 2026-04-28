@@ -101,7 +101,14 @@ def historico(
             elif nat == "TRIBUTO":
                 tributo += valor
 
-        # compromissos_abertos: saldo_pp de registro_pp ELEGIVEL em rodadas da competência
+        # compromissos_abertos: saldo_pp de registro_pp ELEGIVEL na competencia,
+        # filtrando pela rodada mais recente por chave (evita inflacao quando
+        # PP foi re-importado em rodada nova)
+        from backend.api.routers.contratos_competencia import (
+            _created_at_por_rodada,
+            _filtrar_pela_rodada_mais_recente,
+        )
+
         compromissos_abertos = 0.0
         rodadas_rows = (
             client.table("rodada")
@@ -111,17 +118,20 @@ def historico(
             .data
             or []
         )
-        rodada_ids = [r["id"] for r in rodadas_rows]
-        if rodada_ids:
+        rodada_ids_da_comp = [r["id"] for r in rodadas_rows]
+        if rodada_ids_da_comp:
             regs = (
                 client.table("registro_pp")
-                .select("saldo_pp")
+                .select("id,saldo_pp,contrato_id,mes_competencia,prestador_id,rodada_id")
                 .eq("status_saldo", "ELEGIVEL")
-                .in_("rodada_id", rodada_ids)
+                .in_("rodada_id", rodada_ids_da_comp)
                 .execute()
                 .data
                 or []
             )
+            if regs:
+                created_at_lookup = _created_at_por_rodada(client, rodada_ids_da_comp)
+                regs = _filtrar_pela_rodada_mais_recente(regs, created_at_lookup)
             compromissos_abertos = sum(float(r.get("saldo_pp") or 0) for r in regs)
 
         resultado.append(MesHistorico(

@@ -127,6 +127,24 @@ Este repositório implementa a camada de **software** (visualização, controle 
 
 **Regra:** quando surgir tema jurídico-contábil durante desenvolvimento, apontar para a nota do vault e manter foco no software.
 
+## Invariante: leitura de registro_pp por competência
+
+**Regra:** ao consultar `registro_pp` filtrando por `mes_competencia` (sem rodada_id), aplicar o helper `_filtrar_pela_rodada_mais_recente` de `backend/api/routers/contratos_competencia.py`. Sem isso, registros do mesmo `(contrato_id, mes_competencia, prestador_id)` em rodadas distintas são somados — Saldo Original infla quando PP é re-importado em rodada nova.
+
+**Para "Pago" e "data_pagamento":** usar `_pix_por_chave` que cruza PIX classificados a registros_pp da mesma chave em qualquer rodada. Pagamentos históricos não podem sumir quando rodada nova substitui o PP.
+
+**Endpoints que aplicam:**
+- `backend/api/routers/contratos_competencia.py` — todas as funções
+- `backend/api/routers/dashboard_compromissos_recebiveis.py:compromissos`
+- `backend/api/routers/dashboard_historico.py:historico` (no bloco `compromissos_abertos`)
+
+**Endpoints que NÃO aplicam (e por quê):**
+- `backend/api/routers/rodadas.py` — todas as queries em registro_pp filtram por `rodada_id` (escopo de uma rodada específica). OK.
+- `backend/api/routers/dashboard.py:141` (`pp_realizado`) — soma `valor` de `transacao_bancaria` filtrada por `data_extrato`. FITID dedup garante unicidade. OK.
+- `backend/api/routers/adiantamento.py:35` — lista por `prestador_id` para UI escolher qual compensar. Pode listar duplicado mas é decisão humana. Aceitável.
+
+**Caso reproduzível do bug** (rodada `a4fecc9e` + baseline `22f82135`): MG-UNAI 02.26 mostrava Saldo Original R$ 1.978.713,07 = R$ 682.925,21 (seed) + R$ 1.295.787,86 (PP novo). Pós-fix: ≈ R$ 1.295.787,86.
+
 ## Estrutura do backend web
 
 - backend/api/main.py — entrypoint FastAPI (sem prefix /api; rotas diretas: /auth, /rodadas, /excecoes_pj)

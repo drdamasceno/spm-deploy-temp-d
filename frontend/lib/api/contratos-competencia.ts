@@ -26,10 +26,9 @@ export async function listarContratosAnteriores(
 export async function listarContratosAnterioresFechadas(
   ate: string
 ): Promise<ContratoAnteriorItem[]> {
-  const { data } = await apiClient.get<ContratoAnteriorItem[]>(
-    "/contratos/anteriores-fechadas",
-    { params: { ate } }
-  )
+  const { data } = await apiClient.get<ContratoAnteriorItem[]>("/contratos/anteriores-fechadas", {
+    params: { ate },
+  })
   return data
 }
 

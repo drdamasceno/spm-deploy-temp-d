@@ -15,10 +15,11 @@ class ContratoCidadeListItem(BaseModel):
     saldo: float
     prestadores: int
     status: str  # "PAGO" | "PARCIAL" | "PENDENTE"
+    data_pagamento: Optional[date] = None  # data do PIX que quitou; None se nao quitado
 
 
 class ContratoAnteriorItem(BaseModel):
-    """1 linha do carry-over (compete < atual, saldo > 0)."""
+    """1 linha do carry-over (compete < atual). Inclui quitados-no-mes-do-filtro."""
     contrato_id: str
     uf: str
     cidade: str
@@ -29,6 +30,7 @@ class ContratoAnteriorItem(BaseModel):
     prestadores: int
     status: str
     idade_dias: int
+    data_pagamento: Optional[date] = None  # data do PIX que quitou; None se nao quitado
 
 
 class PrestadorLinhaDetalhe(BaseModel):

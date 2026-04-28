@@ -28,11 +28,11 @@ export default function ContratosPage() {
       listarContratosAnteriores(competencia),
       listarContratosAnterioresFechadas(competencia),
     ])
-      .then(([atuais, ant, fec]) => {
+      .then(([atuais, ant, fech]) => {
         if (!cancelled) {
           setItens(atuais)
           setAnteriores(ant)
-          setFechadas(fec)
+          setFechadas(fech)
         }
       })
       .catch((e: unknown) => {
@@ -62,7 +62,6 @@ export default function ContratosPage() {
 
       <TabelaCidade itens={itens} competencia={competencia} />
       <CarryOverSection itens={anteriores} />
-
       <CarryOverClosedSection itens={fechadas} />
 
       <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center gap-3 text-sm">
