@@ -94,6 +94,26 @@ def _filtrar_pela_rodada_mais_recente(
     ]
 
 
+_IN_BATCH_SIZE = 200
+"""Limite por chamada `.in_(col, ids)`. Mantém URL bem abaixo do teto do
+proxy Supabase/Cloudflare (~16KB) e do nginx (8KB padrão). 200 UUIDs ≈
+7,4KB de querystring na coluna; com folga pra colunas adicionais."""
+
+
+def _chunked_select(client, ids, query_builder, batch_size: int = _IN_BATCH_SIZE):
+    """Executa `query_builder(client, chunk)` em batches de `batch_size`
+    e concatena resultados. `query_builder` deve retornar a query construída
+    (não chamar `.execute()`)."""
+    if not ids:
+        return []
+    out: list[dict] = []
+    for i in range(0, len(ids), batch_size):
+        chunk = ids[i:i + batch_size]
+        rows = query_builder(client, chunk).execute().data or []
+        out.extend(rows)
+    return out
+
+
 def _pix_por_chave(
     client,
     chaves: set[tuple[str, str, str]],
@@ -112,15 +132,18 @@ def _pix_por_chave(
     competencias = list({c[1] for c in chaves})
     prestador_ids = list({c[2] for c in chaves})
 
-    rpps = (
-        client.table("registro_pp")
-        .select("id,contrato_id,mes_competencia,prestador_id")
-        .in_("contrato_id", contrato_ids)
-        .in_("mes_competencia", competencias)
-        .in_("prestador_id", prestador_ids)
-        .execute()
-        .data
-        or []
+    # Chunking em prestador_ids (geralmente o maior IN). contrato_ids e
+    # competencias entram como filtros adicionais em cada chunk.
+    rpps = _chunked_select(
+        client,
+        prestador_ids,
+        lambda c, chunk: (
+            c.table("registro_pp")
+            .select("id,contrato_id,mes_competencia,prestador_id")
+            .in_("contrato_id", contrato_ids)
+            .in_("mes_competencia", competencias)
+            .in_("prestador_id", chunk)
+        ),
     )
     rpp_to_chave: dict[str, tuple[str, str, str]] = {}
     for r in rpps:
@@ -134,13 +157,15 @@ def _pix_por_chave(
     if not rpp_to_chave:
         return out
 
-    txs = (
-        client.table("transacao_bancaria")
-        .select("registro_pp_id,valor,data_extrato")
-        .in_("registro_pp_id", list(rpp_to_chave.keys()))
-        .execute()
-        .data
-        or []
+    # Chunking em registro_pp_id — pode crescer pra 800+ em /contratos/anteriores.
+    txs = _chunked_select(
+        client,
+        list(rpp_to_chave.keys()),
+        lambda c, chunk: (
+            c.table("transacao_bancaria")
+            .select("registro_pp_id,valor,data_extrato")
+            .in_("registro_pp_id", chunk)
+        ),
     )
     for t in txs:
         rid = t.get("registro_pp_id")
