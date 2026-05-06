@@ -114,17 +114,6 @@ def _chunked_select(client, ids, query_builder, batch_size: int = _IN_BATCH_SIZE
     return out
 
 
-_STATUS_PAGO_VALIDOS = ("MATCH_AUTOMATICO", "FRACIONADO", "CONCILIADO_POR_CATEGORIA")
-"""Status de transacao_bancaria que contam como pagamento confirmado em /contratos.
-
-MANUAL_PENDENTE é excluído: representa PIX cuja titularidade não foi confirmada
-(ex: motor casou por valor coincidente sem match de nome — VALOR_SEM_TITULAR)
-ou cujo valor diverge do saldo PP. Exibir como pago cria pagamento fantasma e
-risco de pagamento duplicado pelo operador. Decisão: precisa revisão humana
-antes de virar pago.
-"""
-
-
 def _pix_por_chave(
     client,
     chaves: set[tuple[str, str, str]],
@@ -136,8 +125,13 @@ def _pix_por_chave(
     rodada. Necessario para que pagamentos historicos nao sumam quando
     PP novo é re-importado em rodada nova.
 
-    Filtra por status_conciliacao ∈ _STATUS_PAGO_VALIDOS — MANUAL_PENDENTE
-    NÃO conta como pago.
+    Inclui MANUAL_PENDENTE — pagamento real saiu, titular bate por nome ou
+    razão social, só o valor diverge do saldo PP (caso amarelo do spec:
+    retenção tributária / parcial / cross-competência). Da ótica de caixa
+    do CEO o valor está pago; sinal de divergência aparece em UI dedicada
+    de revisão (futuro polimento). Os fantasmas reais (titular alheio,
+    sem candidato por nome) já são bloqueados pelo motor (`conciliacao_spm`,
+    docstring linha 21-25 — exige titularidade).
     """
     if not chaves:
         return {}
@@ -177,9 +171,8 @@ def _pix_por_chave(
         list(rpp_to_chave.keys()),
         lambda c, chunk: (
             c.table("transacao_bancaria")
-            .select("registro_pp_id,valor,data_extrato,status_conciliacao")
+            .select("registro_pp_id,valor,data_extrato")
             .in_("registro_pp_id", chunk)
-            .in_("status_conciliacao", list(_STATUS_PAGO_VALIDOS))
         ),
     )
     for t in txs:

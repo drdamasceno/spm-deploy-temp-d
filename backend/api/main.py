@@ -22,6 +22,7 @@ from backend.api.routers import (
     extratos,
     orcamento,
     regra_classificacao,
+    retorno_pix,
     rodadas,
     saldos,
     transacao_linha,
@@ -72,6 +73,7 @@ app.include_router(dashboard_historico.router)
 app.include_router(dashboard_saidas_bolso.router)
 app.include_router(saldos.router)
 app.include_router(transacao_linha.router)
+app.include_router(retorno_pix.router)
 
 
 @app.get("/version")
