@@ -9,6 +9,7 @@ arquitetural cross-rodada (rodada `22f82135` absorveu seed via UPSERT, fix em
 `_filtrar_pela_rodada_mais_recente` reintroduz o bug. Documentado em
 `/Users/dr.damasceno/second-brain/projetos/sistema-financeiro-spm/2026-04-25-rodada-com-unai-e-bug-cross-rodada.md`.
 """
+import re
 from typing import List, Optional
 from uuid import UUID
 from collections import defaultdict
@@ -21,6 +22,38 @@ from backend.api.routers.contratos_competencia import (
     _created_at_por_rodada,
     _chunked_select,
 )
+
+
+# Regex idêntica ao parser do XLSX (persistencia_parsers.py:_resolver_contrato_id)
+# — mantém o mesmo critério de match.
+_RE_PROJETO_UF_CIDADE = re.compile(r"^\s*([A-Z]{2})\s*[-–]\s*(.+?)\s*$", re.I)
+
+
+def _resolver_contrato_id_via_titular(
+    contratos: list[dict],
+    titular: Optional[str],
+) -> Optional[str]:
+    """Resolve contrato_id a partir do `titular_razao_social` quando a linha
+    do orçamento veio com `contrato_id=NULL` (parser não conseguiu resolver
+    no momento da importação, ou orçamento antigo com regex menos tolerante).
+
+    Critério: idêntico ao parser — match `^([A-Z]{2})\\s*[-–]\\s*(.+?)\\s*$`,
+    com fallback por prefixo de cidade.
+    """
+    if not titular:
+        return None
+    m = _RE_PROJETO_UF_CIDADE.match(titular.strip())
+    if not m:
+        return None
+    uf = m.group(1).upper()
+    cidade_busca = m.group(2).strip().upper()
+    for c in contratos:
+        if (c.get("uf") or "").upper() == uf and (c.get("cidade") or "").upper() == cidade_busca:
+            return c["id"]
+    for c in contratos:
+        if (c.get("uf") or "").upper() == uf and cidade_busca.startswith((c.get("cidade") or "").upper()):
+            return c["id"]
+    return None
 from backend.api.schemas.margem import (
     RealizadoPorLinhaItem,
     MargemPorContratoOut,
@@ -297,7 +330,7 @@ def margem_por_contrato(
     # 2. linhas FATURAMENTO + DESPESA_PROFISSIONAIS desse orçamento
     linhas = (
         client.table("orcamento_linha")
-        .select("id,natureza,contrato_id,valor_previsto")
+        .select("id,natureza,contrato_id,valor_previsto,titular_razao_social")
         .eq("orcamento_id", orcamento_id)
         .in_("natureza", ["FATURAMENTO", "DESPESA_PROFISSIONAIS"])
         .execute()
@@ -306,6 +339,27 @@ def margem_por_contrato(
     )
     if not linhas:
         return []
+
+    # 2b. Resolução fallback de contrato_id via titular_razao_social — cobre
+    # orçamentos antigos onde o parser não conseguiu resolver no momento da
+    # importação. Mesmo critério do parser (regex 'UF - cidade' + match na
+    # tabela contrato). Sem isso, /contratos mostra coluna Margem vazia em
+    # todas as linhas mesmo havendo orçamento subido.
+    sem_contrato = [l for l in linhas if not l.get("contrato_id")]
+    if sem_contrato:
+        contratos_all = (
+            client.table("contrato")
+            .select("id,uf,cidade")
+            .execute()
+            .data
+            or []
+        )
+        for l in sem_contrato:
+            cid_resolvido = _resolver_contrato_id_via_titular(
+                contratos_all, l.get("titular_razao_social")
+            )
+            if cid_resolvido:
+                l["contrato_id"] = cid_resolvido
 
     # 3. realizado por linha (reutiliza lógica do endpoint 1)
     linha_ids = [l["id"] for l in linhas]
