@@ -16,6 +16,7 @@ import {
 import { TabelaLinhas } from "@/components/orcamento/tabela-linhas";
 import { LinhaEditorModal } from "@/components/orcamento/linha-editor-modal";
 import { DrawerMultiConta } from "@/components/conciliacao/drawer-multi-conta";
+import { DrawerMargemPrestadores } from "@/components/contratos/drawer-margem-prestadores";
 import type {
   EmpresaOut,
   CategoriaOut,
@@ -46,6 +47,13 @@ export default function DespesasVariaveisPage() {
   const [loading, setLoading] = useState(true);
   const [linhaEditando, setLinhaEditando] = useState<OrcamentoLinhaOut | null>(null);
   const [linhaConciliacao, setLinhaConciliacao] = useState<OrcamentoLinhaOut | null>(null);
+  // Drilldown de prestadores: usado quando linha tem contrato_id (caso normal
+  // em DESPESA_PROFISSIONAIS). Mostra rateio de margem por médico via
+  // /margem/por-profissional.
+  const [drawerPrestadores, setDrawerPrestadores] = useState<{
+    contratoId: string;
+    rotulo: string;
+  } | null>(null);
 
   const recarregar = useCallback(async () => {
     setLoading(true);
@@ -135,6 +143,20 @@ export default function DespesasVariaveisPage() {
     faturamentoRealizadoTotal > 0
       ? (margemRealizadaTotal / faturamentoRealizadoTotal) * 100
       : null;
+  // Quando realizado=0 (sem PIX recebido nem pago), mostra margem PREVISTA
+  // pra evitar UI vazia. Decisão de design — comunica margem esperada.
+  const margemPrevistaTotal = useMemo(
+    () => margemContratos.reduce((acc, m) => acc + m.margem_previsto, 0),
+    [margemContratos]
+  );
+  const faturamentoPrevistoTotal = useMemo(
+    () => margemContratos.reduce((acc, m) => acc + m.faturamento_previsto, 0),
+    [margemContratos]
+  );
+  const margemPctPrevista =
+    faturamentoPrevistoTotal > 0
+      ? (margemPrevistaTotal / faturamentoPrevistoTotal) * 100
+      : null;
 
   if (loading) return <div className="p-6 text-slate-500">Carregando...</div>;
 
@@ -156,13 +178,19 @@ export default function DespesasVariaveisPage() {
             corValor={saldo >= -0.01 ? "text-emerald-700" : "text-red-700"}
           />
           <KpiMini
-            label="Margem Realizada"
+            label={margemPctRealizada !== null ? "Margem Realizada" : "Margem Prevista"}
             value={
               margemPctRealizada !== null
                 ? `${formatBRL(margemRealizadaTotal)} (${margemPctRealizada.toFixed(1)}%)`
-                : "—"
+                : margemPctPrevista !== null
+                  ? `${formatBRL(margemPrevistaTotal)} (${margemPctPrevista.toFixed(1)}% est.)`
+                  : "—"
             }
-            corValor={margemRealizadaTotal >= 0 ? "text-emerald-700" : "text-red-700"}
+            corValor={
+              (margemPctRealizada !== null ? margemRealizadaTotal : margemPrevistaTotal) >= 0
+                ? "text-emerald-700"
+                : "text-red-700"
+            }
           />
         </div>
       )}
@@ -180,7 +208,18 @@ export default function DespesasVariaveisPage() {
             linhas={linhas}
             categoriaPorId={categoriaPorId}
             projetoPorId={projetoPorId}
-            onRowClick={(l) => setLinhaConciliacao(l)}
+            onRowClick={(l) => {
+              // Linha com contrato vinculado → abre drilldown de prestadores
+              // (rateio de margem por médico). Sem contrato → cai no drawer
+              // de conciliação bancária (caso raro pra DESPESA_PROFISSIONAIS).
+              if (l.contrato_id) {
+                const rotulo =
+                  contratoRotuloPorId[l.contrato_id] ?? l.titular_razao_social;
+                setDrawerPrestadores({ contratoId: l.contrato_id, rotulo });
+              } else {
+                setLinhaConciliacao(l);
+              }
+            }}
             empresaCodigoPorId={Object.fromEntries(empresas.map((e) => [e.id, e.codigo]))}
             empresaOrcamentoId={orcamentoAtual?.empresa_id}
             contratoRotuloPorId={contratoRotuloPorId}
@@ -201,6 +240,13 @@ export default function DespesasVariaveisPage() {
           setLinhaConciliacao(null);
           setLinhaEditando(l);
         }}
+      />
+
+      <DrawerMargemPrestadores
+        contratoId={drawerPrestadores?.contratoId ?? null}
+        rotuloContrato={drawerPrestadores?.rotulo ?? null}
+        competencia={competencia}
+        onClose={() => setDrawerPrestadores(null)}
       />
 
       <LinhaEditorModal

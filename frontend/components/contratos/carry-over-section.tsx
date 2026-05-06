@@ -1,11 +1,16 @@
 "use client"
 import { useState, Fragment } from "react"
 import type { ContratoAnteriorItem } from "@/types/v2"
+import type { MargemPorContrato } from "@/lib/api/margem"
 import { formatBRL, formatDataBR } from "@/lib/format"
 import Link from "next/link"
 
 interface Props {
   itens: ContratoAnteriorItem[]
+  /** Mapa multi-competência: chave = `${comp}|${contrato_id}` → margem. */
+  margemPorChave?: Record<string, MargemPorContrato>
+  /** Callback ao clicar no botão de margem por profissional. */
+  onAbrirMargem?: (contratoId: string, competencia: string, rotulo: string) => void
 }
 
 function ageClass(dias: number): {
@@ -27,7 +32,7 @@ function ageClass(dias: number): {
   }
 }
 
-export function CarryOverSection({ itens }: Props) {
+export function CarryOverSection({ itens, margemPorChave, onAbrirMargem }: Props) {
   const [open, setOpen] = useState(false)
   if (!itens.length) return null
   const totalSaldo = itens.reduce((s, i) => s + i.saldo_aberto, 0)
@@ -75,6 +80,7 @@ export function CarryOverSection({ itens }: Props) {
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Saldo original</th>
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Pago</th>
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Saldo aberto</th>
+                <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Margem</th>
                 <th className="px-3.5 py-2 text-center text-[10px] uppercase text-indigo-900">Status</th>
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-indigo-900">Data Pag.</th>
               </tr>
@@ -91,7 +97,7 @@ export function CarryOverSection({ itens }: Props) {
                       style={isDestaque
                         ? { background: `linear-gradient(90deg,${style.bgFrom} 0%,${style.bgTo} 100%)`, borderTop: `${dias >= 90 ? 3 : 2}px solid ${style.border}` }
                         : { background: "#e0e7ff" }}>
-                      <td colSpan={8} className={`${isDestaque ? "py-2.5" : "py-1.5"} px-3.5 font-bold`}
+                      <td colSpan={9} className={`${isDestaque ? "py-2.5" : "py-1.5"} px-3.5 font-bold`}
                         style={{ color: style.text, fontSize: isDestaque ? 13 : 12 }}>
                         {style.icon && <span className="mr-1.5" style={{ fontSize: dias >= 90 ? 16 : 14 }}>{style.icon}</span>}
                         {formatCompetenciaCurta(comp)} ·
@@ -102,7 +108,14 @@ export function CarryOverSection({ itens }: Props) {
                         {dias >= 90 && <span className="ml-2.5 inline-block text-[10px] px-2.5 py-0.5 bg-red-900 text-white rounded-full font-bold">90+ DIAS</span>}
                       </td>
                     </tr>
-                    {itensGrupo.map(it => (
+                    {itensGrupo.map(it => {
+                      const margem = margemPorChave?.[`${comp}|${it.contrato_id}`]
+                      const margemReal = margem?.margem_realizado ?? null
+                      const corMargem = margemReal !== null
+                        ? margemReal >= 0 ? "text-emerald-700" : "text-red-700"
+                        : "text-slate-400"
+                      const rotulo = `${it.uf}-${it.cidade}`
+                      return (
                       <tr key={it.contrato_id + comp} className="border-b border-slate-200"
                         style={isDestaque ? { background: dias >= 90 ? "#fef2f2" : "#fff7ed" } : { background: "white" }}>
                         <td className="px-3.5 py-2 text-xs text-slate-600">{formatCompetenciaCurta(comp)}</td>
@@ -115,6 +128,23 @@ export function CarryOverSection({ itens }: Props) {
                         <td className="px-3.5 py-2 text-right text-slate-500">{formatBRL(it.total_original)}</td>
                         <td className="px-3.5 py-2 text-right text-blue-800">{formatBRL(it.total_pago)}</td>
                         <td className="px-3.5 py-2 text-right font-bold text-red-900">{formatBRL(it.saldo_aberto)}</td>
+                        <td className={`px-3.5 py-2 text-right font-semibold ${corMargem}`}>
+                          {margemReal !== null ? (
+                            <button
+                              type="button"
+                              onClick={() => onAbrirMargem?.(it.contrato_id, comp, rotulo)}
+                              className="hover:underline"
+                              title="Detalhar margem por profissional"
+                            >
+                              {formatBRL(margemReal)}
+                              {margem?.margem_pct !== null && margem?.margem_pct !== undefined && (
+                                <span className="text-[10px] font-normal opacity-80 ml-1">
+                                  ({(margem.margem_pct * 100).toFixed(1)}%)
+                                </span>
+                              )}
+                            </button>
+                          ) : "—"}
+                        </td>
                         <td className="px-3.5 py-2 text-center">
                           <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                             {it.status[0] + it.status.slice(1).toLowerCase()}
@@ -124,13 +154,14 @@ export function CarryOverSection({ itens }: Props) {
                           {it.data_pagamento ? formatDataBR(it.data_pagamento) : "—"}
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </Fragment>
                 )
               })}
               <tr className="border-t-2 border-indigo-300 bg-indigo-100 font-bold">
                 <td colSpan={5} className="px-3.5 py-2.5 text-indigo-900">Total em aberto (residual)</td>
                 <td className="px-3.5 py-2.5 text-right text-indigo-700 tabular-nums">{formatBRL(totalSaldo)}</td>
+                <td></td>
                 <td></td>
                 <td></td>
               </tr>

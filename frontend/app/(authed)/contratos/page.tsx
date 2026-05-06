@@ -24,9 +24,13 @@ export default function ContratosPage() {
   const [itens, setItens] = useState<ContratoCidadeListItem[]>([])
   const [anteriores, setAnteriores] = useState<ContratoAnteriorItem[]>([])
   const [fechadas, setFechadas] = useState<ContratoAnteriorItem[]>([])
-  const [margemPorContratoId, setMargemPorContratoId] = useState<Record<string, MargemPorContrato>>({})
+  // Mapa multi-competência: chave = `${comp}|${contrato_id}` → MargemPorContrato.
+  // Necessário porque CarryOverSection/CarryOverClosedSection mostram contratos
+  // de competências distintas (anteriores em aberto e fechadas).
+  const [margemPorChave, setMargemPorChave] = useState<Record<string, MargemPorContrato>>({})
   const [loading, setLoading] = useState(true)
   const [drawerContratoId, setDrawerContratoId] = useState<string | null>(null)
+  const [drawerCompetencia, setDrawerCompetencia] = useState<string | null>(null)
   const [drawerRotulo, setDrawerRotulo] = useState<string | null>(null)
 
   useEffect(() => {
@@ -43,21 +47,34 @@ export default function ContratosPage() {
         setItens(atuais)
         setAnteriores(ant)
         setFechadas(fech)
-        // Carrega margem por contrato pra empresa principal (primeiro item)
+        // Carrega margem por contrato pra TODAS competências distintas presentes
+        // (atual + anteriores em aberto + anteriores fechadas). Endpoint
+        // /margem/por-contrato é por competência, então fazemos N chamadas em
+        // paralelo. Margem é enriquecimento — falhas silenciosas não quebram.
         const empresaPrincipal = empresas[0]
         if (empresaPrincipal) {
+          const competenciasDistintas = new Set<string>([competencia])
+          for (const a of ant) competenciasDistintas.add(a.competencia)
+          for (const f of fech) competenciasDistintas.add(f.competencia)
           try {
-            const margens = await getMargemPorContrato(competencia, empresaPrincipal.id)
+            const respostas = await Promise.all(
+              [...competenciasDistintas].map((comp) =>
+                getMargemPorContrato(comp, empresaPrincipal.id)
+                  .then((margens) => ({ comp, margens }))
+                  .catch(() => ({ comp, margens: [] as MargemPorContrato[] }))
+              )
+            )
             if (!cancelled) {
               const map: Record<string, MargemPorContrato> = {}
-              for (const m of margens) {
-                if (m.contrato_id) map[m.contrato_id] = m
+              for (const { comp, margens } of respostas) {
+                for (const m of margens) {
+                  if (m.contrato_id) map[`${comp}|${m.contrato_id}`] = m
+                }
               }
-              setMargemPorContratoId(map)
+              setMargemPorChave(map)
             }
           } catch {
-            // Margem é enriquecimento — falha silenciosa não quebra a tela
-            if (!cancelled) setMargemPorContratoId({})
+            if (!cancelled) setMargemPorChave({})
           }
         }
       })
@@ -89,14 +106,31 @@ export default function ContratosPage() {
       <TabelaCidade
         itens={itens}
         competencia={competencia}
-        margemPorContratoId={margemPorContratoId}
-        onAbrirMargem={(cid, rotulo) => {
+        margemPorChave={margemPorChave}
+        onAbrirMargem={(cid, comp, rotulo) => {
           setDrawerContratoId(cid)
+          setDrawerCompetencia(comp)
           setDrawerRotulo(rotulo)
         }}
       />
-      <CarryOverSection itens={anteriores} />
-      <CarryOverClosedSection itens={fechadas} />
+      <CarryOverSection
+        itens={anteriores}
+        margemPorChave={margemPorChave}
+        onAbrirMargem={(cid, comp, rotulo) => {
+          setDrawerContratoId(cid)
+          setDrawerCompetencia(comp)
+          setDrawerRotulo(rotulo)
+        }}
+      />
+      <CarryOverClosedSection
+        itens={fechadas}
+        margemPorChave={margemPorChave}
+        onAbrirMargem={(cid, comp, rotulo) => {
+          setDrawerContratoId(cid)
+          setDrawerCompetencia(comp)
+          setDrawerRotulo(rotulo)
+        }}
+      />
 
       <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center gap-3 text-sm">
         <span className="text-slate-400 uppercase text-[11px] tracking-wide">Total em aberto</span>
@@ -107,9 +141,10 @@ export default function ContratosPage() {
       <DrawerMargemPrestadores
         contratoId={drawerContratoId}
         rotuloContrato={drawerRotulo}
-        competencia={competencia}
+        competencia={drawerCompetencia ?? competencia}
         onClose={() => {
           setDrawerContratoId(null)
+          setDrawerCompetencia(null)
           setDrawerRotulo(null)
         }}
       />

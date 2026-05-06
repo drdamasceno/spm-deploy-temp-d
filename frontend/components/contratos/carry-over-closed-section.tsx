@@ -1,14 +1,17 @@
 "use client"
 import { useState, Fragment } from "react"
 import type { ContratoAnteriorItem } from "@/types/v2"
+import type { MargemPorContrato } from "@/lib/api/margem"
 import { formatBRL } from "@/lib/format"
 import Link from "next/link"
 
 interface Props {
   itens: ContratoAnteriorItem[]
+  margemPorChave?: Record<string, MargemPorContrato>
+  onAbrirMargem?: (contratoId: string, competencia: string, rotulo: string) => void
 }
 
-export function CarryOverClosedSection({ itens }: Props) {
+export function CarryOverClosedSection({ itens, margemPorChave, onAbrirMargem }: Props) {
   const [open, setOpen] = useState(false)
   if (!itens.length) return null
   const totalPago = itens.reduce((s, i) => s + i.total_pago, 0)
@@ -56,6 +59,7 @@ export function CarryOverClosedSection({ itens }: Props) {
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-emerald-900">Saldo original</th>
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-emerald-900">Pago</th>
                 <th className="px-3.5 py-2 text-right text-[10px] uppercase text-emerald-900">Saldo aberto</th>
+                <th className="px-3.5 py-2 text-right text-[10px] uppercase text-emerald-900">Margem</th>
                 <th className="px-3.5 py-2 text-center text-[10px] uppercase text-emerald-900">Status</th>
               </tr>
             </thead>
@@ -65,11 +69,18 @@ export function CarryOverClosedSection({ itens }: Props) {
                 return (
                   <Fragment key={comp}>
                     <tr style={{ background: "#d1fae5" }}>
-                      <td colSpan={7} className="py-1.5 px-3.5 font-bold text-emerald-900 text-[12px]">
+                      <td colSpan={8} className="py-1.5 px-3.5 font-bold text-emerald-900 text-[12px]">
                         {formatCompetenciaCurta(comp)} · {itensGrupo.length} contrato(s) quitado(s) · pago {formatBRL(totalGrupoPago)}
                       </td>
                     </tr>
-                    {itensGrupo.map(it => (
+                    {itensGrupo.map(it => {
+                      const margem = margemPorChave?.[`${comp}|${it.contrato_id}`]
+                      const margemReal = margem?.margem_realizado ?? null
+                      const corMargem = margemReal !== null
+                        ? margemReal >= 0 ? "text-emerald-700" : "text-red-700"
+                        : "text-slate-400"
+                      const rotulo = `${it.uf}-${it.cidade}`
+                      return (
                       <tr
                         key={it.contrato_id + comp}
                         className="border-b border-slate-200 hover:bg-emerald-50"
@@ -85,13 +96,30 @@ export function CarryOverClosedSection({ itens }: Props) {
                         <td className="px-3.5 py-2 text-right text-slate-500">{formatBRL(it.total_original)}</td>
                         <td className="px-3.5 py-2 text-right text-emerald-700">{formatBRL(it.total_pago)}</td>
                         <td className="px-3.5 py-2 text-right font-bold text-emerald-700">R$ 0,00</td>
+                        <td className={`px-3.5 py-2 text-right font-semibold ${corMargem}`}>
+                          {margemReal !== null ? (
+                            <button
+                              type="button"
+                              onClick={() => onAbrirMargem?.(it.contrato_id, comp, rotulo)}
+                              className="hover:underline"
+                              title="Detalhar margem por profissional"
+                            >
+                              {formatBRL(margemReal)}
+                              {margem?.margem_pct !== null && margem?.margem_pct !== undefined && (
+                                <span className="text-[10px] font-normal opacity-80 ml-1">
+                                  ({(margem.margem_pct * 100).toFixed(1)}%)
+                                </span>
+                              )}
+                            </button>
+                          ) : "—"}
+                        </td>
                         <td className="px-3.5 py-2 text-center">
                           <span className="inline-block text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900">
                             Quitado
                           </span>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </Fragment>
                 )
               })}
@@ -99,6 +127,7 @@ export function CarryOverClosedSection({ itens }: Props) {
                 <td colSpan={4} className="px-3.5 py-2.5 text-emerald-900">Total quitado (competências fechadas)</td>
                 <td className="px-3.5 py-2.5 text-right text-emerald-700 tabular-nums">{formatBRL(totalPago)}</td>
                 <td className="px-3.5 py-2.5 text-right text-emerald-700 tabular-nums">R$ 0,00</td>
+                <td></td>
                 <td></td>
               </tr>
             </tbody>

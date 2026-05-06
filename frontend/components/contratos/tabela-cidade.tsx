@@ -7,11 +7,12 @@ import Link from "next/link"
 interface Props {
   itens: ContratoCidadeListItem[]
   competencia: string
-  /** Mapa contrato_id → margem (do endpoint /margem/por-contrato).
+  /** Mapa multi-competência: chave = `${comp}|${contrato_id}` → margem.
    *  Quando ausente, coluna Margem mostra "—". */
-  margemPorContratoId?: Record<string, MargemPorContrato>
-  /** Callback ao clicar no botão de margem por profissional. */
-  onAbrirMargem?: (contratoId: string, rotulo: string) => void
+  margemPorChave?: Record<string, MargemPorContrato>
+  /** Callback ao clicar no botão de margem por profissional.
+   *  Recebe contratoId + competencia (importante: pode diferir da página). */
+  onAbrirMargem?: (contratoId: string, competencia: string, rotulo: string) => void
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -23,7 +24,7 @@ const STATUS_STYLE: Record<string, string> = {
 export function TabelaCidade({
   itens,
   competencia,
-  margemPorContratoId,
+  margemPorChave,
   onAbrirMargem,
 }: Props) {
   if (!itens.length) {
@@ -34,8 +35,8 @@ export function TabelaCidade({
     )
   }
   const totalGeral = itens.reduce((s, i) => s + i.saldo, 0)
-  const totalMargemReal = margemPorContratoId
-    ? itens.reduce((s, i) => s + (margemPorContratoId[i.id]?.margem_realizado ?? 0), 0)
+  const totalMargemReal = margemPorChave
+    ? itens.reduce((s, i) => s + (margemPorChave[`${i.competencia}|${i.id}`]?.margem_realizado ?? 0), 0)
     : 0
   return (
     <div className="bg-white">
@@ -54,7 +55,7 @@ export function TabelaCidade({
         </thead>
         <tbody className="tabular-nums">
           {itens.map(it => {
-            const margem = margemPorContratoId?.[it.id]
+            const margem = margemPorChave?.[`${it.competencia}|${it.id}`]
             const margemReal = margem?.margem_realizado ?? null
             const corMargem = margemReal !== null
               ? margemReal >= 0 ? "text-emerald-700" : "text-red-700"
@@ -75,7 +76,7 @@ export function TabelaCidade({
                   {margemReal !== null ? (
                     <button
                       type="button"
-                      onClick={() => onAbrirMargem?.(it.id, rotulo)}
+                      onClick={() => onAbrirMargem?.(it.id, it.competencia, rotulo)}
                       className="hover:underline"
                       title="Detalhar margem por profissional"
                     >
@@ -108,7 +109,7 @@ export function TabelaCidade({
             <td className="px-3.5 py-3 text-right">{formatBRL(itens.reduce((s, i) => s + i.total_pago, 0))}</td>
             <td className="px-3.5 py-3 text-right text-red-900">{formatBRL(totalGeral)}</td>
             <td className={`px-3.5 py-3 text-right ${totalMargemReal >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-              {margemPorContratoId ? formatBRL(totalMargemReal) : "—"}
+              {margemPorChave ? formatBRL(totalMargemReal) : "—"}
             </td>
             <td></td>
             <td></td>
