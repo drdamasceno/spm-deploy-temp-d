@@ -2,14 +2,15 @@
 import type { NaturezaOrcamento } from "@/types/v2";
 import { cn } from "@/lib/utils";
 
+// Tabs internas de /despesas-fixas. FATURAMENTO e DESPESA_PROFISSIONAIS
+// foram extraídas pra abas top-level (/faturamento e /despesas-variaveis)
+// na re-arquitetura de 2026-05-06 — não cabem aqui.
 const TABS: { natureza: NaturezaOrcamento; label: string }[] = [
   { natureza: "DESPESA_FIXA", label: "Despesas Fixas" },
   { natureza: "TRIBUTO", label: "Tributos" },
   { natureza: "SALARIO_VARIAVEL", label: "Variáveis · Salários" },
   { natureza: "COMISSAO", label: "Comissões" },
   { natureza: "VALOR_VARIAVEL", label: "Variáveis · Outros" },
-  { natureza: "DESPESA_PROFISSIONAIS", label: "Profissionais (PP)" },
-  { natureza: "FATURAMENTO", label: "Faturamento" },
 ];
 
 export function TabsSecoes({

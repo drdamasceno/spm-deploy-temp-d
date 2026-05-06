@@ -185,8 +185,8 @@ export default function ConciliacaoPage() {
         Nenhum orcamento encontrado para a competencia {competencia}
         {empresa !== "TODAS" ? ` / ${empresa}` : ""}. Faca upload de um
         orcamento na tela{" "}
-        <a className="underline text-blue-600" href="/orcamento">
-          Orcamento
+        <a className="underline text-blue-600" href="/despesas-fixas">
+          Despesas Fixas
         </a>{" "}
         primeiro.
       </div>

@@ -13,3 +13,4 @@ frontend/.next/
 frontend/.env.local
 frontend/.env*.local
 frontend/next-env.d.ts
+.venv-py312/

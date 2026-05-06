@@ -6,9 +6,15 @@ import {
   listarContratosAnteriores,
   listarContratosAnterioresFechadas,
 } from "@/lib/api/contratos-competencia"
+import { listarEmpresas } from "@/lib/api/catalogos"
+import {
+  getMargemPorContrato,
+  type MargemPorContrato,
+} from "@/lib/api/margem"
 import { TabelaCidade } from "@/components/contratos/tabela-cidade"
 import { CarryOverSection } from "@/components/contratos/carry-over-section"
 import { CarryOverClosedSection } from "@/components/contratos/carry-over-closed-section"
+import { DrawerMargemPrestadores } from "@/components/contratos/drawer-margem-prestadores"
 import type { ContratoCidadeListItem, ContratoAnteriorItem } from "@/types/v2"
 import { formatBRL } from "@/lib/format"
 import { toast } from "sonner"
@@ -18,7 +24,10 @@ export default function ContratosPage() {
   const [itens, setItens] = useState<ContratoCidadeListItem[]>([])
   const [anteriores, setAnteriores] = useState<ContratoAnteriorItem[]>([])
   const [fechadas, setFechadas] = useState<ContratoAnteriorItem[]>([])
+  const [margemPorContratoId, setMargemPorContratoId] = useState<Record<string, MargemPorContrato>>({})
   const [loading, setLoading] = useState(true)
+  const [drawerContratoId, setDrawerContratoId] = useState<string | null>(null)
+  const [drawerRotulo, setDrawerRotulo] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -27,12 +36,29 @@ export default function ContratosPage() {
       listarContratos({ competencia }),
       listarContratosAnteriores(competencia),
       listarContratosAnterioresFechadas(competencia),
+      listarEmpresas(),
     ])
-      .then(([atuais, ant, fech]) => {
-        if (!cancelled) {
-          setItens(atuais)
-          setAnteriores(ant)
-          setFechadas(fech)
+      .then(async ([atuais, ant, fech, empresas]) => {
+        if (cancelled) return
+        setItens(atuais)
+        setAnteriores(ant)
+        setFechadas(fech)
+        // Carrega margem por contrato pra empresa principal (primeiro item)
+        const empresaPrincipal = empresas[0]
+        if (empresaPrincipal) {
+          try {
+            const margens = await getMargemPorContrato(competencia, empresaPrincipal.id)
+            if (!cancelled) {
+              const map: Record<string, MargemPorContrato> = {}
+              for (const m of margens) {
+                if (m.contrato_id) map[m.contrato_id] = m
+              }
+              setMargemPorContratoId(map)
+            }
+          } catch {
+            // Margem é enriquecimento — falha silenciosa não quebra a tela
+            if (!cancelled) setMargemPorContratoId({})
+          }
         }
       })
       .catch((e: unknown) => {
@@ -60,7 +86,15 @@ export default function ContratosPage() {
         </span>
       </div>
 
-      <TabelaCidade itens={itens} competencia={competencia} />
+      <TabelaCidade
+        itens={itens}
+        competencia={competencia}
+        margemPorContratoId={margemPorContratoId}
+        onAbrirMargem={(cid, rotulo) => {
+          setDrawerContratoId(cid)
+          setDrawerRotulo(rotulo)
+        }}
+      />
       <CarryOverSection itens={anteriores} />
       <CarryOverClosedSection itens={fechadas} />
 
@@ -69,6 +103,16 @@ export default function ContratosPage() {
         <span className="text-slate-400 text-[11px]">(atual + anteriores)</span>
         <span className="ml-auto text-lg font-bold tabular-nums">{formatBRL(totalGeral)}</span>
       </div>
+
+      <DrawerMargemPrestadores
+        contratoId={drawerContratoId}
+        rotuloContrato={drawerRotulo}
+        competencia={competencia}
+        onClose={() => {
+          setDrawerContratoId(null)
+          setDrawerRotulo(null)
+        }}
+      />
     </div>
   )
 }

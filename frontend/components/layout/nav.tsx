@@ -3,13 +3,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
+// Re-arquitetura 2026-05-06: aba Orçamento foi desmembrada em 3 abas
+// (Faturamento, Despesas Fixas, Despesas Variáveis). Ordem do nav segue o
+// fluxo Receita → Despesas → Detalhe por Contrato → Pagamentos antecipados
+// → Operação interna → Cadastros.
 const ITEMS = [
   { href: "/", label: "Dashboard" },
-  { href: "/conciliacao", label: "Conciliação" },
+  { href: "/faturamento", label: "Faturamento" },
+  { href: "/despesas-fixas", label: "Despesas Fixas" },
+  { href: "/despesas-variaveis", label: "Despesas Variáveis" },
   { href: "/contratos", label: "Contratos" },
-  { href: "/rodadas", label: "Rodadas PP" },
-  { href: "/orcamento", label: "Orçamento" },
   { href: "/adiantamentos", label: "Adiantamentos" },
+  { href: "/rodadas", label: "Rodadas PP" },
+  { href: "/conciliacao", label: "Conciliação" },
   { href: "/extratos", label: "Extratos" },
   { href: "/cadastros", label: "Cadastros" },
 ];

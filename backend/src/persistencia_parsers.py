@@ -7,6 +7,10 @@ from postgrest.exceptions import APIError
 
 from backend.src.orcamento_xlsx import OrcamentoParser, OrcamentoLinhaParsed, NaturezaOrcamento
 from backend.src.extrato_unicred import UnicredParser
+from backend.src.extrato_unicred_cnab import (
+    parse_extrato_unicred_cnab240,
+    eh_cnab240_unicred,
+)
 from backend.src.extrato_bradesco import extract_bank_account, parse_extrato
 
 
@@ -126,15 +130,24 @@ def persistir_orcamento_xlsx(
 
 
 def persistir_extrato_unicred(client: Client, arquivo_bytes: bytes, conta_id: UUID) -> Dict:
-    """Parseia PDF Unicred e insere transacoes em transacao_bancaria.
+    """Parseia extrato Unicred (PDF ou CNAB-240) e insere transacoes em transacao_bancaria.
+
+    Auto-detecta o formato:
+      - %PDF-... → caminho PDF (UnicredParser, pdfplumber)
+      - 240-char fixed lines começando com '136'+'0000' → caminho CNAB-240
 
     Returns:
         dict compativel com UploadExtratoResponse.
     """
-    parser = UnicredParser()
-    meta = parser.extrair_metadados(arquivo_bytes)
-    transacoes = parser.parse(arquivo_bytes)
-    # Unicred PDF não tem ID único — gera hash sintético como fitid
+    if eh_cnab240_unicred(arquivo_bytes):
+        meta, transacoes = parse_extrato_unicred_cnab240(arquivo_bytes)
+        origem_marker = "UNICRED_CNAB"
+    else:
+        parser = UnicredParser()
+        meta = parser.extrair_metadados(arquivo_bytes)
+        transacoes = parser.parse(arquivo_bytes)
+        origem_marker = "UNICRED_PDF"
+    # Unicred não tem ID único — gera hash sintético como fitid
     import hashlib
     def _synth_fitid(t):
         key = f"UC|{t.data_movimento}|{t.valor:.2f}|{(t.historico or '')[:200]}|{t.titular_pix or ''}|{t.linha_numero}"
@@ -177,7 +190,7 @@ def persistir_extrato_unicred(client: Client, arquivo_bytes: bytes, conta_id: UU
                 "conta_bancaria_id": str(conta_id),
                 "saldo_valor": float(meta.saldo_final),
                 "data_referencia": meta.periodo_fim,
-                "origem": "UNICRED_PDF",
+                "origem": origem_marker,
             }).execute()
         except Exception:
             pass  # não-crítico — se falhar, extrato continua válido

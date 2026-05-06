@@ -20,6 +20,7 @@ from backend.api.routers import (
     dashboard_saidas_bolso,
     excecao_pj,
     extratos,
+    margem,
     orcamento,
     regra_classificacao,
     retorno_pix,
@@ -60,6 +61,7 @@ app.include_router(rodadas.router, prefix="/rodadas", tags=["rodadas"])
 app.include_router(excecao_pj.router, prefix="/excecoes_pj", tags=["excecoes_pj"])
 app.include_router(catalogos.router, tags=["catalogos"])
 app.include_router(orcamento.router)
+app.include_router(margem.router)
 app.include_router(extratos.router)
 app.include_router(conciliacao.router)
 app.include_router(regra_classificacao.router)

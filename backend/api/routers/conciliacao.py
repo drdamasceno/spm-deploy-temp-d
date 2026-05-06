@@ -37,7 +37,7 @@ from backend.src.classificador_conciliacao import (
 router = APIRouter(prefix="/conciliacoes", tags=["conciliacao"])
 
 
-def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
+def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None, natureza: str | None = None):
     """Carrega linhas abertas do orcamento, transacoes NAO_CLASSIFICADO da conta, regras ativas.
 
     Linhas 'abertas' = valor_previsto - sum(conciliacao_orcamento.valor_aplicado) > 0.
@@ -45,14 +45,18 @@ def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
     Importante: as somas de conciliacoes sao filtradas pelos IDs das linhas do
     orcamento atual (in_('orcamento_linha_id', [...])) para nao carregar
     conciliacoes de outros orcamentos do DB.
+
+    `natureza` opcional restringe o pool a uma natureza específica do orçamento
+    e ao sinal de valor compatível das transações:
+      - FATURAMENTO     -> linhas dessa natureza + txs com valor > 0 (créditos)
+      - qualquer outra  -> linhas dessa natureza + txs com valor < 0 (débitos)
+    Sem isso, créditos PIX casariam com despesas e vice-versa quando a aba
+    de origem for Faturamento.
     """
-    linhas = (
-        client.table("orcamento_linha")
-        .select("*")
-        .eq("orcamento_id", str(orcamento_id))
-        .execute()
-        .data
-    )
+    linhas_q = client.table("orcamento_linha").select("*").eq("orcamento_id", str(orcamento_id))
+    if natureza:
+        linhas_q = linhas_q.eq("natureza", natureza)
+    linhas = linhas_q.execute().data
     linha_ids = [l["id"] for l in linhas]
     sums: dict[str, float] = {}
     if linha_ids:
@@ -86,6 +90,10 @@ def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
     )
     if conta_id:
         q = q.eq("conta_id", str(conta_id))
+    if natureza == "FATURAMENTO":
+        q = q.gt("valor", 0)
+    elif natureza:
+        q = q.lt("valor", 0)
     txs_raw = q.execute().data
 
     # Heurística preventiva — 2 categorias distintas:
@@ -164,10 +172,11 @@ def _carregar_contexto(client, orcamento_id: UUID, conta_id: UUID | None):
 def sugestoes(
     orcamento_id: UUID,
     conta_id: UUID | None = None,
+    natureza: str | None = None,
     current=Depends(get_current_user),
 ):
     client = get_supabase_authed(current["jwt"])
-    txs, abertas, regras = _carregar_contexto(client, orcamento_id, conta_id)
+    txs, abertas, regras = _carregar_contexto(client, orcamento_id, conta_id, natureza)
     out: List[SugestaoOut] = []
     for tx in txs:
         for s in sugerir_cascata(tx, abertas, regras):
