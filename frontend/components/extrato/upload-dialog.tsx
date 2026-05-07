@@ -80,8 +80,25 @@ export function UploadExtratoDialog({
           <p className="text-xs text-slate-600">A conta e resolvida automaticamente via BANKID+ACCTID do arquivo OFX.</p>
         )}
         <div>
-          <label className="text-xs text-slate-600 block mb-1">Arquivo {tipo === "UNICRED" ? "PDF" : "OFX"}</label>
-          <input type="file" accept={tipo === "UNICRED" ? ".pdf,application/pdf" : ".ofx"} onChange={e => setArquivo(e.target.files?.[0] ?? null)} className="text-sm" />
+          <label className="text-xs text-slate-600 block mb-1">
+            Arquivo {tipo === "UNICRED" ? "PDF ou CNAB-240" : "OFX"}
+          </label>
+          {/* Unicred aceita PDF ("Conferência" exportado) OU CNAB-240 (.cnab240
+              — preferido, mais robusto). Backend auto-detecta o formato.
+              Usamos accept="*" + dica visual em vez de filtro restrito porque
+              extensões como .cnab240 não são reconhecidas pelo file picker
+              do macOS de forma consistente. */}
+          <input
+            type="file"
+            accept={tipo === "UNICRED" ? "*" : ".ofx"}
+            onChange={e => setArquivo(e.target.files?.[0] ?? null)}
+            className="text-sm"
+          />
+          {tipo === "UNICRED" && (
+            <p className="text-[11px] text-slate-500 mt-1">
+              Aceita: PDF (&quot;Conferência&quot;) ou CNAB-240 (.cnab240) — preferir CNAB.
+            </p>
+          )}
         </div>
         <div className="flex gap-2 justify-end pt-2">
           <button type="button" onClick={onClose} className="px-3 py-1 text-sm rounded border border-slate-300">Cancelar</button>
