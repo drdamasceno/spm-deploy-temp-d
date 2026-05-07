@@ -2,7 +2,7 @@
 import { memo } from "react";
 import type { OrcamentoLinhaOut, CategoriaOut, ProjetoOut } from "@/types/v2";
 import { BOLSO_LABELS, BOLSO_CORES } from "@/types/v2";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatDataBR } from "@/lib/format";
 import type { RealizadoPorLinha } from "@/lib/api/margem";
 
 /** Modo da tela — ajusta cabeçalhos, cores e fonte de "pago".
@@ -210,7 +210,7 @@ function TabelaLinhasImpl({
                   {realizado ? formatBRL(saldoNum) : "—"}
                 </td>
                 <td className="px-3 py-2 text-slate-600 text-xs">
-                  {dataPgto ?? l.data_previsao ?? "—"}
+                  {dataPgto ? formatDataBR(dataPgto) : l.data_previsao ? formatDataBR(l.data_previsao) : "—"}
                 </td>
                 <td className="px-3 py-2 text-center">
                   <span className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase ${status.cls}`}>

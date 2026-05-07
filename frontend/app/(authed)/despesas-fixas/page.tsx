@@ -49,7 +49,9 @@ export default function DespesasFixasPage() {
   const [categorias, setCategorias] = useState<CategoriaOut[]>([]);
   const [projetos, setProjetos] = useState<ProjetoOut[]>([]);
   const [contratoRotuloPorId, setContratoRotuloPorId] = useState<Record<string, string>>({});
-  const [tab, setTab] = useState<NaturezaOrcamento>("DESPESA_FIXA");
+  // Tab inicial: TRIBUTO (maior número, top of mind). Pode evoluir pra
+  // "PENDENTE" virtual que filtra linhas com categoria_id NULL — ver tab-pendente abaixo.
+  const [tab, setTab] = useState<string>("TRIBUTO");
   const [loading, setLoading] = useState(true);
   const [realizadoPorLinhaId, setRealizadoPorLinhaId] = useState<Record<string, RealizadoPorLinha>>({});
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -125,7 +127,7 @@ export default function DespesasFixasPage() {
   }, [recarregar]);
 
   const contagens = useMemo(() => {
-    const m: Record<NaturezaOrcamento, number> = {
+    const m: Record<string, number> = {
       DESPESA_FIXA: 0,
       TRIBUTO: 0,
       SALARIO_VARIAVEL: 0,
@@ -133,9 +135,13 @@ export default function DespesasFixasPage() {
       VALOR_VARIAVEL: 0,
       DESPESA_PROFISSIONAIS: 0,
       FATURAMENTO: 0,
+      // PENDENTE é virtual — count = linhas sem categoria_id (foco do usuário:
+      // identificar e classificar pra que apareçam nos buckets corretos).
+      PENDENTE: 0,
     };
     linhas.forEach((l) => {
       m[l.natureza] = (m[l.natureza] ?? 0) + 1;
+      if (!l.categoria_id) m.PENDENTE = (m.PENDENTE ?? 0) + 1;
     });
     return m;
   }, [linhas]);
@@ -154,7 +160,12 @@ export default function DespesasFixasPage() {
     [totaisRealizadosPorSecao]
   );
 
-  const linhasDoTab = linhas.filter((l) => l.natureza === tab);
+  // Tab "PENDENTE" é virtual: filtra linhas com categoria_id NULL em qualquer
+  // natureza. As demais filtram por natureza específica.
+  const linhasDoTab =
+    tab === "PENDENTE"
+      ? linhas.filter((l) => !l.categoria_id)
+      : linhas.filter((l) => l.natureza === tab);
 
   const totalPrevisto = useMemo(
     () => linhasDoTab.reduce((acc, l) => acc + l.valor_previsto, 0),
@@ -168,6 +179,26 @@ export default function DespesasFixasPage() {
     });
     return m;
   }, [linhas]);
+
+  // Breakdown por bolso — soma previsto + realizado pra cada um dos 4 bolsos
+  // (SPM_OPERACIONAL, FD_VIA_SPM, HUGO_PESSOAL, INVESTIMENTO_HUGO).
+  // Mostra "para onde vai o dinheiro" com barra de uso (% realizado/previsto).
+  const totaisPorBolso = useMemo(() => {
+    const m: Record<string, { previsto: number; realizado: number }> = {
+      SPM_OPERACIONAL: { previsto: 0, realizado: 0 },
+      FD_VIA_SPM: { previsto: 0, realizado: 0 },
+      HUGO_PESSOAL: { previsto: 0, realizado: 0 },
+      INVESTIMENTO_HUGO: { previsto: 0, realizado: 0 },
+    };
+    linhas.forEach((l) => {
+      const bolso = l.bolso ?? "SPM_OPERACIONAL";
+      const real = realizadoPorLinhaId[l.id]?.pago ?? 0;
+      if (!m[bolso]) m[bolso] = { previsto: 0, realizado: 0 };
+      m[bolso].previsto += l.valor_previsto;
+      m[bolso].realizado += real;
+    });
+    return m;
+  }, [linhas, realizadoPorLinhaId]);
 
   const totalGeral = useMemo(
     () =>
@@ -317,6 +348,44 @@ export default function DespesasFixasPage() {
         </div>
       )}
 
+      {/* Breakdown por bolso — para onde vai o dinheiro */}
+      {orcamentoAtual && (
+        <div className="bg-slate-50 border-b border-slate-200 px-4 pb-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+          <BolsoCard
+            label="SPM operacional"
+            siglaCor="bg-slate-100 text-slate-700"
+            sigla="SPM"
+            previsto={totaisPorBolso.SPM_OPERACIONAL?.previsto ?? 0}
+            realizado={totaisPorBolso.SPM_OPERACIONAL?.realizado ?? 0}
+            barraCor="bg-slate-700"
+          />
+          <BolsoCard
+            label="Via FD"
+            siglaCor="bg-amber-100 text-amber-800"
+            sigla="FD"
+            previsto={totaisPorBolso.FD_VIA_SPM?.previsto ?? 0}
+            realizado={totaisPorBolso.FD_VIA_SPM?.realizado ?? 0}
+            barraCor="bg-amber-500"
+          />
+          <BolsoCard
+            label="Pessoal Hugo"
+            siglaCor="bg-red-100 text-red-800"
+            sigla="HUGO"
+            previsto={totaisPorBolso.HUGO_PESSOAL?.previsto ?? 0}
+            realizado={totaisPorBolso.HUGO_PESSOAL?.realizado ?? 0}
+            barraCor="bg-red-500"
+          />
+          <BolsoCard
+            label="Investimento Hugo"
+            siglaCor="bg-violet-100 text-violet-800"
+            sigla="INV"
+            previsto={totaisPorBolso.INVESTIMENTO_HUGO?.previsto ?? 0}
+            realizado={totaisPorBolso.INVESTIMENTO_HUGO?.realizado ?? 0}
+            barraCor="bg-violet-500"
+          />
+        </div>
+      )}
+
       {orcamentoAtual ? (
         <>
           <TabsSecoes active={tab} contagens={contagens} onChange={setTab} />
@@ -386,6 +455,45 @@ function proximaCompetencia(c: string): string {
   const nextM = m === 12 ? 1 : m + 1;
   const nextY = m === 12 ? y + 1 : y;
   return `${nextY}-${String(nextM).padStart(2, "0")}`;
+}
+
+function BolsoCard({
+  label,
+  sigla,
+  siglaCor,
+  previsto,
+  realizado,
+  barraCor,
+}: {
+  label: string;
+  sigla: string;
+  siglaCor: string;
+  previsto: number;
+  realizado: number;
+  barraCor: string;
+}) {
+  const pct = previsto > 0 ? Math.min(100, (realizado / previsto) * 100) : 0;
+  const acima = previsto > 0 && realizado > previsto;
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg p-2.5">
+      <div className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold flex items-center justify-between">
+        <span>Bolso · {label}</span>
+        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${siglaCor}`}>{sigla}</span>
+      </div>
+      <div className="flex justify-between items-baseline mt-1">
+        <span className="text-xs tabular-nums text-slate-500">prev {formatBRL(previsto)}</span>
+        <span className="text-sm font-bold tabular-nums text-slate-900">{formatBRL(realizado)}</span>
+      </div>
+      <div className="w-full bg-slate-100 rounded-full h-1 mt-1.5 overflow-hidden">
+        <div className={`${barraCor} h-full rounded-full transition-all`} style={{ width: `${pct.toFixed(1)}%` }}></div>
+      </div>
+      {acima && (
+        <div className="text-[9px] text-red-600 mt-0.5">
+          ▲ {((realizado / previsto - 1) * 100).toFixed(1)}% acima do previsto
+        </div>
+      )}
+    </div>
+  );
 }
 
 function KpiMini({
